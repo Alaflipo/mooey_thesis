@@ -37,6 +37,7 @@ class Canvas(QWidget):
         filename = 'loom-examples/wien.json'
         self.network, self.filedata = read_network_from_loom(filename)
         self.network.scale_by_shortest_edge( min_edge_scale )
+        self.network.calculate_mid_point()
 
     def render(self):
         #self.network.clone()
@@ -237,7 +238,7 @@ class Canvas(QWidget):
 
                     if type(ui.selected_edge) == Label: 
                         ui.selected_node.assign_label(ui.hover_empty_port)
-                        network_change = f'Reassign at "{ui.selected_node.label}" - "label to port {ui.hover_empty_port}'
+                        network_change = f'Reassign at "{ui.selected_node.label}" - label to port {ui.hover_empty_port}'
                     else: 
                         # we went from one handle to another handle on the same node.
                         # assign symmetric / asymmetric based on modifier key.

@@ -88,38 +88,48 @@ def render_network( painter, net: Network, show_labels ):
         painter.setPen(ui.node_pen)
         painter.setBrush(ui.node_brush)
         painter.drawEllipse(v.pos, 10, 10)
+        
+        # For station ID's 
         if show_labels: painter.drawText( v.pos + QPointF(ui.bezier_radius,10), v.name )
 
-        if v.layout_set: 
-            # painter.drawEllipse(v.label_node.pos, 10, 10)
+        # Draw bouding box label
+        if net.layout_set: 
             painter.save()
             painter.translate(handle_label_position(v, v.label_node.port))
             painter.setPen(QPen(QColor('lightgray'),20))
             painter.drawLine(QPointF(0,0), v.label_node.head - v.pos)
             painter.restore()
-        # painter.save()
-        # painter.translate(handle_position(v, 4))
-        # painter.setFont(QFont("Arial", 15))
-        # painter.drawText(0, 5, v.label_node.label_text)
-        # painter.restore()
 
-
-
-        # For label drawing
-
-        # painter.save()
-        # painter.translate(handle_position(v, v.port_number_label))
-        # painter.rotate(-((v.port_number_label + 4) % 8) * 45)  
-        # painter.setFont(QFont("Arial", 15))
-        # painter.drawText(0, 5, v.label)
-        # painter.restore()
+        # Draw text in bounding box  
+        painter.save()
+        painter.translate(handle_label_text_position(v, v.label_node.port))
+        if v.label_node.port is not None: painter.rotate(handle_label_rotation(v.label_node.port))   
+        painter.setFont(QFont("Arial", 15))
+        painter.drawText( QPointF(0, 5), v.label )
+        painter.restore()
 
 
 def handle_position( v, p ):
     return v.pos + ui.rose_radius*port_offset[p]
 
-def handle_label_position(v, p): 
-    return v.pos + 30*port_offset[p]
+def handle_label_rotation(p: int): 
+    rotation_factor = [0, -45, -90, 45, 0, -45, -90, 45]
+    return rotation_factor[p]
+
+def handle_label_position(v: Node, p: int): 
+    if p is not None: 
+        return v.pos + 30*port_offset[p]
+    else: 
+        return v.pos + 30*port_offset[0]
+    
+def handle_label_text_position(v: Node, p: int): 
+    if p is not None: 
+        if p in [0,1,2,7]: 
+            return v.label_node.head + 30*port_offset[p]
+        else: 
+            return v.pos + 30*port_offset[p]
+    else: 
+        return v.pos + 30*port_offset[0]
 
 def free_edge_handle_position( v, e ):
     dir = e.direction(v).toPointF()

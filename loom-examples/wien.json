@@ -1400,7 +1400,8 @@
     {
       "type": "Feature",
       "properties": {
-        "id": "0x13434420"
+        "id": "0x13434420",
+        "station_label": "test"
       },
       "geometry": {
         "type": "Point",

@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QFrame, QLabel, QCheckBox, QMessageBox, QDialog
+from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QFrame, QLabel, QCheckBox, QMessageBox, QDialog, QSlider, QWidgetAction
 from PySide6.QtGui import Qt, QAction, QKeySequence
 
 import datetime
@@ -36,6 +36,9 @@ class MainWindow(QMainWindow):
         self.canvas.history_checkpoint( "Initial drawing" )
         self.canvas.update_history_actions()
 
+        # Control variables
+        self.label_strength: float = 0.1
+
 
     def construct_sidebar(self, layout):
 
@@ -55,6 +58,11 @@ class MainWindow(QMainWindow):
         add_sidebar_button(layout, "Rounding", lambda: self.do_assign_round())
         add_sidebar_button(layout, "Matching", lambda: self.do_assign_matching())
         add_sidebar_button(layout, "Global...", lambda: self.do_assign_ilp())
+
+        # Buttons to control the labeling
+        add_group_separator(layout)
+        layout.addWidget(QLabel("Labeling"))
+        add_slider(layout, self.do_set_label_values)
 
         # Buttons to control the layout algorithm
         add_group_separator(layout)
@@ -93,10 +101,15 @@ class MainWindow(QMainWindow):
         self.canvas.render()
 
     def do_assign_matching(self):
-        port_assign.assign_by_local_matching(self.canvas.network)
+        port_assign.assign_by_local_matching(self.canvas.network, self.label_strength)
         self.update_layout_if_auto()
         self.canvas.history_checkpoint("Assign ports by matching")
         self.canvas.render()
+
+    def do_set_label_values(self, value: float): 
+        self.label_strength = value
+        print(value)
+        self.do_assign_matching()
 
     def do_assign_ilp(self):
         bend_cost = 1
@@ -116,6 +129,8 @@ class MainWindow(QMainWindow):
             m.setIcon(QMessageBox.Warning)
             m.setStandardButtons(QMessageBox.Ok)
             m.exec()
+        else: 
+            self.canvas.network.layout_set = True 
         self.canvas.history_checkpoint("Automated layout")
         if self.canvas.drawing_is_completely_oob():
             self.canvas.zoom_to_network()
@@ -126,6 +141,7 @@ class MainWindow(QMainWindow):
             self.do_layout()
 
     def do_reset_layout(self):
+        self.canvas.network.layout_set = False 
         for v in self.canvas.network.nodes.values():
             v.pos = v.geo_pos
         for e in self.canvas.network.edges:
@@ -175,6 +191,17 @@ def add_sidebar_button(layout, text, action):
     button = QPushButton(text)
     button.clicked.connect(action)
     layout.addWidget(button)
+
+def add_slider(layout, action): 
+    slider = QSlider(Qt.Horizontal)
+    slider.setMinimum(0)
+    slider.setMaximum(100)
+    slider.setValue(2)
+    slider.setTickPosition(QSlider.TicksBelow)
+    slider.setTickInterval(1)
+    slider.setFixedWidth(120)
+    slider.valueChanged.connect(action)
+    layout.addWidget(slider)
 
 def add_group_separator(layout):
     line = QFrame()

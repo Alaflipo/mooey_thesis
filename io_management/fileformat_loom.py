@@ -30,12 +30,12 @@ def read_network_from_loom(filename):
                     color = '000000'
                 edge_staging.append( (s,t,color) )
         
-        first_node = list(network.nodes.values())[0]
-        for i in range(20): 
-            next_pos = first_node.pos + QPointF(-0.01, 0)
-            network.nodes[f'test{i}'] = Node(next_pos.x(), next_pos.y(), f'test{i}', f'test{i}')
-            edge_staging.append((first_node.name, f'test{i}', '000000'))
-            first_node = network.nodes[f'test{i}']
+        # first_node = list(network.nodes.values())[0]
+        # for i in range(20): 
+        #     next_pos = first_node.pos + QPointF(-0.01, 0)
+        #     network.nodes[f'test{i}'] = Node(next_pos.x(), next_pos.y(), f'test{i}', f'test{i}')
+        #     edge_staging.append((first_node.name, f'test{i}', '000000'))
+        #     first_node = network.nodes[f'test{i}']
 
         for s,t,color in edge_staging:
             s = network.nodes[s]

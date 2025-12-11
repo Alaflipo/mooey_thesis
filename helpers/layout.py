@@ -65,7 +65,6 @@ def layout_lp( net: Network, stable_node:Node = None ):
         v.label_node.xvar = solver.NumVar(0, solver.infinity(), v.name+'_label_x')
         v.label_node.yvar = solver.NumVar(0, solver.infinity(), v.name+'_label_x')
         objective += edge_constraint( solver, objective, v, v.label_node.port, v.label_node, v.label_node.text_width)
-        v.layout_set = True
 
     # Space the stations on degree 2 paths
     seen = dict()
@@ -97,6 +96,7 @@ def layout_lp( net: Network, stable_node:Node = None ):
             if v.label_node: v.label_node.set_position( v.label_node.xvar.solution_value(), v.label_node.yvar.solution_value() )
             del(v.xvar)
             del(v.yvar)
+
         for e in net.edges:
             if e.bend is not None:
                 # Bend was a Node for solving; reduce it to a point

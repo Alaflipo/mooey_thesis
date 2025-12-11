@@ -14,8 +14,13 @@ class Network:
         self.nodes: dict[str, Node] = {}
         self.edges: list[Edge] = []
 
+        # Midpoint of the network
+        self.midpoint: QPointF = QPointF(0,0)
+        self.layout_set: bool = False 
+
     def clone(self):
         other = Network()
+        other.midpoint = self.midpoint
         node_clones = dict()
         for k,v in self.nodes.items():
             other_v = Node(v.pos.x(), v.pos.y(), v.name, v.label)
@@ -49,12 +54,25 @@ class Network:
         for v in self.nodes.values():
             for e in v.edges:
                 v.try_evict(e)
+    
+    def evict_all_labels(self): 
+        for v in self.nodes.values():
+            v.evict_label()
 
     def get_label_nodes(self): 
         node_labels: list[Node] = []
         for v in self.nodes.values():
             node_labels.append(v.label_node)
         return node_labels
+    
+    def calculate_mid_point(self): 
+        sum_x = 0 
+        sum_y = 0 
+        for v in self.nodes.values():
+            sum_x += v.geo_pos.x()
+            sum_y += v.geo_pos.y()
+        self.midpoint = QPointF(sum_x / len(self.nodes), sum_y / len(self.nodes))
+        print(self.midpoint)
 
 class Node:
     def __init__(self, x, y, name: str, label:str = "" ):
@@ -68,8 +86,6 @@ class Node:
 
         self.edges: list[Edge] = []
         self.ports = [None]*8
-
-        self.layout_set: bool = False 
 
     def set_position( self, x, y ):
         self.pos = QPointF(x,y)
@@ -86,7 +102,7 @@ class Node:
         if port_number is not None: 
             self.port_number_label = port_number
 
-    def assign(self, e, i, force=False) -> bool:
+    def assign(self, e: Edge, i: int, force=False) -> bool:
         if self.ports[i] is not None:
             if force: self.evict(self.ports[i])
             else: return False
@@ -97,26 +113,34 @@ class Node:
         self.ports[i] = e
         return True
     
-    def assign_label(self, new_port): 
-        self.ports[self.label_node.port] = None 
-        self.label_node.port = new_port
-        self.ports[new_port] = self.label_node 
-    
-    def assign_both_ends( self, e, i, force=False ):
+    def assign_both_ends( self, e: Edge, i: int, force=False ):
         self.assign(e,i,force)
         e.other(self).assign( e, opposite_port(i), force )
 
-    def evict( self, e ):
+    def evict( self, e: Edge ):
         me = e.id(self)
         assert self.ports[e.port[me]] == e
         self.ports[e.port[me]] = None
         e.port[me] = None
         e.bend = None
 
-    def try_evict( self, e ):
+    def assign_label(self, new_port): 
+        # First make sure that the label is evicted (if there is a new edge there we leave it)
+        if self.label_node.port is not None and (type(self.ports[self.label_node.port]) == Label): 
+            self.ports[self.label_node.port] = None 
+        self.label_node.port = new_port
+        self.ports[new_port] = self.label_node 
+
+    def evict_label(self): 
+        if self.label_node.port is not None: 
+            self.ports[self.label_node.port] = None 
+            self.label_node.port = None 
+
+    # If the edge is connected to the vertex it will evict it 
+    def try_evict( self, e: Edge ):
         if not e.free_at(self): self.evict(e)
 
-    def straighten_deg2( self, e ):
+    def straighten_deg2( self, e: Edge ):
         port = e.port[e.id(self)]
         v = e.other(self)
         while len(v.edges)==2:
@@ -163,7 +187,7 @@ class Label:
 
         self.head: QPointF = node_pos + QPointF(self.text_width, 10)
         self.geo_head: QPointF = self.head
-        self.port: int = 4
+        self.port: int | None = None 
 
     def measure_text_width(self): 
         font = QFont("Arial", 15)
@@ -185,15 +209,18 @@ class Edge:
         if self.v[0]==v: return 0
         if self.v[1]==v: return 1
         assert False
+
     def other(self, v):
         if self.v[0]==v: return self.v[1]
         if self.v[1]==v: return self.v[0]
         assert False
+
     def port_at(self, v):
         if self.v[0]==v: return self.port[0]
         if self.v[1]==v: return self.port[1]
         assert False
 
+    # returns whether the edge is actually connected to v 
     def free_at(self,v):
         return self.port[self.id(v)]==None
 
