@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QFrame, QLabel, QCheckBox, QMessageBox, QDialog, QSlider, QWidgetAction
+from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QFrame, QLabel, QCheckBox, QMessageBox, QDialog, QSlider, QComboBox
 from PySide6.QtGui import Qt, QAction, QKeySequence
 
 import datetime
@@ -26,6 +26,11 @@ class MainWindow(QMainWindow):
         layout.addLayout(button_layout)
         
         self.canvas = Canvas()
+
+        self.methods = ["Rounding", "Matching", "Global"]
+        self.method_choice: int = 0 
+        self.sliders = [[], [], []]
+        self.slider_values = [[], [], []]
         
         self.construct_sidebar(button_layout)
         self.construct_menubar()
@@ -39,7 +44,7 @@ class MainWindow(QMainWindow):
         # Control variables
         self.label_strength: float = 0.1
 
-
+    
     def construct_sidebar(self, layout):
 
         # Buttons to control the view 
@@ -54,15 +59,34 @@ class MainWindow(QMainWindow):
         # Buttons to control port assignment methods 
         add_group_separator(layout)
         layout.addWidget(QLabel("Port assignment"))
-        add_sidebar_button(layout, "Evict all", lambda: self.do_assign_reset())
-        add_sidebar_button(layout, "Rounding", lambda: self.do_assign_round())
-        add_sidebar_button(layout, "Matching", lambda: self.do_assign_matching())
-        add_sidebar_button(layout, "Global...", lambda: self.do_assign_ilp())
+        
+        # Dropdown
+        self.combo = QComboBox()
+        self.combo.addItems(self.methods)
+        layout.addWidget(self.combo)
+        self.combo.currentIndexChanged.connect(self.dropdown_changed)
 
-        # Buttons to control the labeling
-        add_group_separator(layout)
-        layout.addWidget(QLabel("Labeling"))
-        add_slider(layout, self.do_set_label_values)
+        # sliders rounding method 
+        
+
+        # sliders matching method
+        self.add_slider(layout, "Label Horizontal Weight", 0, 200, 0, slider_set=1)
+
+        # sliders global method
+        self.add_slider(layout, "Bend penalty", 0, 50, 0, slider_set=2, tick_size=0.1)
+        self.add_slider(layout, "Label Horizontal Weight", 0, 200, 0, slider_set=2)
+        self.add_slider(layout, "Label Same-Side Weight", 0, 100, 0, slider_set=2)
+
+        # Exectue chosen method 
+        add_sidebar_button(layout, "GO!", lambda: self.do_port_assign())
+        
+        # Auto update port assignment 
+        self.auto_update_port = QCheckBox("Auto-update Ports")
+        self.auto_update_port.setChecked(False)
+        layout.addWidget(self.auto_update_port)
+
+        # evict port assignment choice 
+        add_sidebar_button(layout, "Evict all", lambda: self.do_assign_reset())
 
         # Buttons to control the layout algorithm
         add_group_separator(layout)
@@ -81,6 +105,68 @@ class MainWindow(QMainWindow):
         self.canvas.auto_render.setChecked(False)
         layout.addWidget(self.canvas.auto_render)
 
+        self.dropdown_changed(0)
+    
+    def dropdown_changed(self, index: int):
+        self.method_choice = index 
+
+        for slider_set in self.sliders: 
+            for (label, slider) in slider_set: 
+                label.hide()
+                slider.hide() 
+
+        for (label, slider) in self.sliders[self.method_choice]: 
+            label.show()
+            slider.show()
+
+    def add_slider(self, layout, text, min, max, value, slider_set, tick_size=1): 
+        label = QLabel(text)
+        layout.addWidget(label)
+
+        slider = QSlider(Qt.Horizontal)
+        slider.setMinimum(min)
+        slider.setMaximum(max)
+        slider.setValue(value)
+        slider.setTickPosition(QSlider.TicksBelow)
+        slider.setTickInterval(1)
+        slider.setFixedWidth(200)
+        slider_index = len(self.sliders[slider_set])
+        slider.valueChanged.connect(lambda x: self.update_slider_value(x, slider_set, slider_index, tick_size))
+        layout.addWidget(slider)
+        
+        self.sliders[slider_set].append((label, slider))
+        self.slider_values[slider_set].append(value)
+
+    def update_slider_value(self, value: float, slider_set: int, slider: int, tick_size=1):
+        self.slider_values[slider_set][slider] = value * tick_size
+        print(self.slider_values)
+        if self.auto_update_port.isChecked(): 
+            self.do_port_assign()
+    
+    def do_port_assign(self): 
+        match self.method_choice: 
+            case 0: self.do_assign_round()
+            case 1: self.do_assign_matching()
+            case 2: self.do_assign_ilp()
+
+    def do_assign_round(self):
+        port_assign.assign_by_rounding(self.canvas.network)
+        self.update_layout_if_auto()
+        self.canvas.history_checkpoint("Assign ports by rounding")
+        self.canvas.render()
+
+    def do_assign_matching(self):
+        port_assign.assign_by_local_matching(self.canvas.network, self.slider_values[1][0])
+        self.update_layout_if_auto()
+        self.canvas.history_checkpoint("Assign ports by matching")
+        self.canvas.render()
+
+    def do_assign_ilp(self):
+        port_assign.assign_by_ilp(self.canvas.network, self.slider_values[2][0], self.slider_values[2][1], self.slider_values[2][2])
+        self.update_layout_if_auto()
+        self.canvas.history_checkpoint(f"Assign ports globally (bend cost {self.slider_values[2][0]})")
+        self.canvas.render()
+
     def do_zoom_to_fit(self):
         self.canvas.zoom_to_network()
         self.canvas.render()
@@ -93,33 +179,6 @@ class MainWindow(QMainWindow):
     def update_layout_if_auto(self):
         if self.canvas.auto_update.isChecked():
             self.do_layout()
-
-    def do_assign_round(self):
-        port_assign.assign_by_rounding(self.canvas.network)
-        self.update_layout_if_auto()
-        self.canvas.history_checkpoint("Assign ports by rounding")
-        self.canvas.render()
-
-    def do_assign_matching(self):
-        port_assign.assign_by_local_matching(self.canvas.network, self.label_strength)
-        self.update_layout_if_auto()
-        self.canvas.history_checkpoint("Assign ports by matching")
-        self.canvas.render()
-
-    def do_set_label_values(self, value: float): 
-        self.label_strength = value
-        print(value)
-        self.do_assign_matching()
-
-    def do_assign_ilp(self):
-        bend_cost = 1
-        dialog = BendPenaltyDialog()
-        if dialog.exec() == QDialog.Accepted:
-            bend_cost = dialog.get_value()
-            port_assign.assign_by_ilp(self.canvas.network,bend_cost)
-            self.update_layout_if_auto()
-            self.canvas.history_checkpoint(f"Assign ports globally (bend cost {bend_cost})")
-            self.canvas.render()
 
     def do_layout(self):
         if layout.layout_lp(self.canvas.network) is False:
@@ -191,18 +250,8 @@ def add_sidebar_button(layout, text, action):
     button = QPushButton(text)
     button.clicked.connect(action)
     layout.addWidget(button)
-
-def add_slider(layout, action): 
-    slider = QSlider(Qt.Horizontal)
-    slider.setMinimum(0)
-    slider.setMaximum(100)
-    slider.setValue(2)
-    slider.setTickPosition(QSlider.TicksBelow)
-    slider.setTickInterval(1)
-    slider.setFixedWidth(120)
-    slider.valueChanged.connect(action)
-    layout.addWidget(slider)
-
+    return button
+        
 def add_group_separator(layout):
     line = QFrame()
     line.setFrameShape(QFrame.HLine)

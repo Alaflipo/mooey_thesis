@@ -151,6 +151,7 @@ class Canvas(QWidget):
 
         if event.buttons() == Qt.RightButton:
             if ui.hover_edge:
+                print('hellooo?')
                 # Context menu when right-clicking a handle
                 menu = QMenu(self)
                 if not ui.hover_edge.free_at(ui.hover_node):
@@ -199,9 +200,6 @@ class Canvas(QWidget):
 
         if press and event.buttons() == Qt.LeftButton:
             print( ui.hover_node, ui.hover_edge, ui.hover_empty_port )
-            # for label
-            # if event.key() == Qt.Key_L: 
-            # 	ui.hover_node.set_label(ui.hover_empty_port)
             if ui.selected_node is None:
                 # nothing was selected: select the thing we clicked on
                 ui.selected_node = ui.hover_node
@@ -219,9 +217,6 @@ class Canvas(QWidget):
             
             if ui.selected_label_node is None and ui.hover_node.label_node.port == ui.hover_empty_port: 
                 ui.selected_label_node = ui.hover_node
-        
-        if release and ui.selected_label_node is not None: 
-            print('hello?')
 
         if release and ui.selected_edge is not None:
             # release mouse and there is a selected handle

@@ -45,35 +45,38 @@ def assign_by_rounding( net ):
 
 from scipy.optimize import linear_sum_assignment
 def assign_by_local_matching( net: Network, label_strength: float ):
-    print("STARTTTT")
     net.evict_all_labels()
     net.evict_all_edges()
     for v in net.nodes.values():
-        print(v.ports)
-    for v in net.nodes.values():
+        # Cost matrix for labels
         costs = cost_matrix_labels(v, label_strength, net.midpoint.x())
         _, cols = linear_sum_assignment(costs)
-        print(cols)
         for i,p in enumerate(cols[:-1]):
             v.assign( v.edges[int(i)], int(p) )
-        v.assign_label(int(cols[-1]))
-        # v.label_node.port = v.first_free_port()
-        # v.ports[v.label_node.port] = v.label_node
 
+        # Assign the correct label 
+        v.assign_label(int(cols[-1]))
 
 ### INTEGER LINEAR PROGRAMMING ###
 
+### For the labeling I want a few things: 
+### - Labels should appear on the same side of a line 
+
 from ortools.linear_solver import pywraplp as lp
-def assign_by_ilp( net, bend_cost=1 ):
+def assign_by_ilp( net: Network, bend_cost=1, label_hor_strength=1, label_side_strength=1):
+
+    net.evict_all_labels()
+    net.evict_all_edges()
 
     # bend cost is relative to squared angle errors
 
-    solver = lp.Solver.CreateSolver("SCIP")
+    solver: lp.Solver = lp.Solver.CreateSolver("SCIP")
     start = perf_counter()
     objective = solver.Sum([])
     portvars = dict()
+    portvars_labels = dict()
     for v in net.nodes.values():
-        costs = cost_matrix(v)
+        costs = cost_matrix_labels(v, label_hor_strength, net.midpoint.x())
         for i,e in enumerate(v.edges):
             my_portvars = [solver.BoolVar(f'pass_{v.name}_{i}_{p}') for p in range(8)]
             for p in range(8):
@@ -81,9 +84,18 @@ def assign_by_ilp( net, bend_cost=1 ):
             # pick exactly one port for an edge
             solver.Add( solver.Sum(my_portvars)==1 )
             portvars[(v,e)] = my_portvars
+        
+        #### For labeling ####
+        portvars_label = [solver.BoolVar(f'label_{v.name}_{p}') for p in range(8)]
         for p in range(8):
-            # assign at most one edge to a port
-            solver.Add( solver.Sum([ portvars[(v,e)][p] for e in v.edges ]) <= 1 )
+            objective += costs[len(costs)-1,p] * portvars_label[p]
+        # Pick one port for each label 
+        solver.Add( solver.Sum(portvars_label)==1 )
+        portvars_labels[v] = portvars_label
+
+        for p in range(8):
+            # assign at most one (edge or LABEL) to a port
+            solver.Add( solver.Sum([ portvars[(v,e)][p] for e in v.edges ] + [portvars_label[p]]) <= 1 )
 
     # consistent port assignment by identifying opposite sides of the same edge
     for e in net.edges:
@@ -100,6 +112,23 @@ def assign_by_ilp( net, bend_cost=1 ):
             for p in range(8):
                 solver.Add( penalty >= portvars[(v,e)][p] - portvars[(v,f)][opposite_port(p)])
 
+    # Labels on the same side
+    seen = dict()
+    for v in list(net.nodes.values()):
+        if v in seen: continue
+        if is_deg2(v):
+            seen[id(v)] = True
+            path1 = spacewalk( v.edges[0].other(v), v, seen )
+            path2 = spacewalk( v.edges[1].other(v), v, seen )
+            walk = path1 + [v] + [v for v in reversed(path2)]
+
+            for p in range(8): 
+                for a, b in zip(walk,walk[1:]):
+                    penalty = solver.BoolVar(f'label_{a.name}_{b.name}')
+                    objective += label_side_strength/10 *penalty
+                    solver.Add( penalty >= portvars_labels[a][p] - portvars_labels[b][p])
+                    solver.Add( penalty <= portvars_labels[a][p] - portvars_labels[b][p])
+
     solver.Minimize(objective)
     status = solver.Solve()
     runtime = perf_counter()-start
@@ -112,6 +141,29 @@ def assign_by_ilp( net, bend_cost=1 ):
             for p in range(8):
                 if x[p].solution_value()>0.5:
                     v.assign(e,p)
+
+        # brute force simple port assignment
+        for v, x in portvars_labels.items(): 
+            for p in range(8): 
+                if x[p].solution_value() > 0.5: 
+                    v.assign_label(p)
+        # for v in net.nodes.values(): 
+        #     v.assign_label(v.first_free_port())
     else:
         print( 'Port assignment ILP infeasible' )
         print( "stats\tPort assignment ILP infeasible" )
+
+def is_deg2(v: Node):
+    return len(v.edges)==2
+
+def spacewalk( v: Node, prev, seen ):
+    seen[v] = True
+    walk = []
+    if is_deg2(v):
+        v0 = v.edges[0].other(v)
+        v1 = v.edges[1].other(v)
+        next = v0 if v1==prev else v1
+        if not id(next) in seen:
+            walk = spacewalk( next, v, seen )
+    walk.append(v)
+    return walk
