@@ -32,13 +32,15 @@ def cost_matrix_labels(v: Node, label_strength: float, mid_point_x):
 
 ### ROUNDING ###
 
-def assign_by_rounding( net ):
+def assign_by_rounding( net: Network ):
     # the way it is implemented now, we can mess up the rotation system unnecessarily
+    net.evict_all_labels()
     net.evict_all_edges()
     for v in net.nodes.values():
         for e in v.edges:
             port = round_angle_to_port(e.geo_angle(v))
             v.assign( e, port, force=False )
+        v.assign_label(v.first_free_port())
 
 
 ### MATCHING ###
@@ -127,7 +129,7 @@ def assign_by_ilp( net: Network, bend_cost=1, label_hor_strength=1, label_side_s
                     penalty = solver.BoolVar(f'label_{a.name}_{b.name}')
                     objective += label_side_strength/10 *penalty
                     solver.Add( penalty >= portvars_labels[a][p] - portvars_labels[b][p])
-                    solver.Add( penalty <= portvars_labels[a][p] - portvars_labels[b][p])
+                    # solver.Add( penalty <= portvars_labels[a][p] - portvars_labels[b][p])
 
     solver.Minimize(objective)
     status = solver.Solve()
