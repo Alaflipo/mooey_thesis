@@ -1,18 +1,31 @@
 from __future__ import annotations 
 
-from math import inf, atan2, pi
+from math import inf, atan2, pi, sqrt
 
-from PySide6.QtCore import QPointF
+from PySide6.QtCore import QPointF, QLineF
 from PySide6.QtGui import QVector2D
 from PySide6.QtGui import QFont, QFontMetrics
 
 def opposite_port( p ):
     return (p+4)%8
 
+diag = 1/sqrt(2)
+
+port_offset = [ QPointF(-1,0)
+              , QPointF(-diag,diag)
+              , QPointF(0,1)
+              , QPointF(diag,diag)
+              , QPointF(1,0)
+              , QPointF(diag,-diag)
+              , QPointF(0,-1)
+              , QPointF(-diag,-diag)
+              ]
+
 class Network:
     def __init__(self):
         self.nodes: dict[str, Node] = {}
         self.edges: list[Edge] = []
+        self.metro_lines: dict[str, list[Edge]] = []
 
         # Midpoint of the network
         self.midpoint: QPointF = QPointF(0,0)
@@ -66,13 +79,31 @@ class Network:
         return node_labels
     
     def calculate_mid_point(self): 
-        sum_x = 0 
-        sum_y = 0 
-        for v in self.nodes.values():
-            sum_x += v.geo_pos.x()
-            sum_y += v.geo_pos.y()
-        self.midpoint = QPointF(sum_x / len(self.nodes), sum_y / len(self.nodes))
-        print(self.midpoint)
+        self.midpoint = midpoint([node.geo_pos for node in self.nodes.values()])
+
+        for line in self.deg_2_lines: 
+            midpoint_line: QPointF = midpoint([node.geo_pos for node in line])
+            for v in line: 
+                v.left_line = midpoint_line.x() <= self.midpoint.x()
+
+    def find_degree_2_lines(self): 
+        self.deg_2_lines: list[list[Node]] = []
+        seen: dict = dict()
+        for name, v in self.nodes.items(): 
+            if name in seen: continue
+
+            if len(v.edges) == 2:
+                seen[name] = True 
+
+                path1 = spacewalk( v.edges[0].other(v), v, seen )
+                path2 = spacewalk( v.edges[1].other(v), v, seen )
+                walk: list[Node] = path1 + [v] + [v for v in reversed(path2)]
+                self.deg_2_lines.append(walk)
+            else: # We skip degree 1 and > 2 because they will be taken into account with one of the walks 
+                continue 
+            
+            print(len(walk), [node.label for node in walk])
+            
 
 class Node:
     def __init__(self, x, y, name: str, label:str = "" ):
@@ -82,10 +113,12 @@ class Node:
         self.label: str = label
 
         # Used for labeling
-        self.label_node: Label = Label(self.pos, label) 
+        self.label_node: Label = Label(self, label) 
 
         self.edges: list[Edge] = []
         self.ports = [None]*8
+
+        self.left_line: bool = True 
 
     def set_position( self, x, y ):
         self.pos = QPointF(x,y)
@@ -111,6 +144,7 @@ class Node:
         if old_port is not None: self.ports[old_port] = None
         e.port[me] = i
         self.ports[i] = e
+        print('hello')
         return True
     
     def assign_both_ends( self, e: Edge, i: int, force=False ):
@@ -139,14 +173,26 @@ class Node:
     # If the edge is connected to the vertex it will evict it 
     def try_evict( self, e: Edge ):
         if not e.free_at(self): self.evict(e)
+    
+    def is_deg2(self): 
+        return len(self.edges) == 2
 
     def straighten_deg2( self, e: Edge ):
         port = e.port[e.id(self)]
+        label_port = self.label_node.port 
+
+        # If the label is in the direction of the straigten call we choose a different port 
+        if label_port == opposite_port(port): 
+            label_port = self.first_free_port(exceptions=[label_port])
+
         v = e.other(self)
+        v.assign_label(label_port)
         while len(v.edges)==2:
             if v==self: break # loop?
             prev_e = e
             e = v.edges[0] if v.edges[0]!=prev_e else v.edges[1]
+            # Make sure that the label port is reassigned to the port position of the first vertex in the straigten call
+            e.other(v).assign_label(label_port)
             v.assign_both_ends(e,port,force=True)
             v = e.other(v)
 
@@ -173,29 +219,42 @@ class Node:
             self.assign(self.edges[1],opposite_port(a))
         else: return False
     
-    def first_free_port(self): 
+    def first_free_port(self, exceptions=[]): 
         for i, port in enumerate(self.ports): 
+            if i in exceptions: 
+                continue 
             if port is None: 
                 return i 
         return None 
 
 class Label: 
 
-    def __init__(self, node_pos: QPointF, label: str):
+    def __init__(self, node: Node, label: str):
         self.label_text: str = label
         self.text_width = self.measure_text_width()
 
-        self.head: QPointF = node_pos + QPointF(self.text_width, 10)
+        self.node: Node = node 
+        self.head: QPointF = node.pos + QPointF(self.text_width, 10)
         self.geo_head: QPointF = self.head
         self.port: int | None = None 
+
+        self.rectangle_points = [None, None, None, None]
 
     def measure_text_width(self): 
         font = QFont("Arial", 15)
         metrics = QFontMetrics(font)
-        return metrics.horizontalAdvance(self.label_text)  
+        return metrics.horizontalAdvance(self.label_text)
     
     def set_position( self, x, y ):
         self.head = QPointF(x,y)
+        self.end = self.head + (self.text_width * port_offset[opposite_port(self.port)])
+        normal = QLineF(self.node.pos, self.head).normalVector()
+        # The box height is 20 so we multiply by 10
+        vector = (QVector2D(normal.dx(), normal.dy()).normalized() * 10).toPointF()
+        self.rectangle_points = [self.head + vector, self.head - vector, self.end - vector, self.end + vector]
+
+    def overlaps(self, other: Label): 
+        pass 
 
 
 class Edge:
@@ -204,6 +263,7 @@ class Edge:
         self.port: list[None | int] = [None,None]
         self.bend = None
         self.color: str = '000000'
+        self.line_id: str = ''
     
     def id(self,v):
         if self.v[0]==v: return 0
@@ -247,3 +307,27 @@ class Edge:
 
 def round_angle_to_port(angle):
     return int(((angle+pi/8)%(2*pi))/(pi/4))
+
+def midpoint(points: list[QPointF]): 
+    sum_x = 0 
+    sum_y = 0 
+    for v in points:
+        sum_x += v.x()
+        sum_y += v.y()
+    return QPointF(sum_x / len(points), sum_y / len(points))
+
+def spacewalk( v: Node, prev, seen ):
+    seen[v.name] = True
+    walk = []
+    if v.is_deg2():
+        v0 = v.edges[0].other(v)
+        v1 = v.edges[1].other(v)
+        next = v0 if v1==prev else v1
+        # We want to add deg 1 and deg > 2 to the walk because they do belong to the part of the metro line
+        if next.is_deg2():
+            if not next.name in seen:
+                walk = spacewalk( next, v, seen )
+        else: 
+            walk.append(next)
+    walk.append(v)
+    return walk

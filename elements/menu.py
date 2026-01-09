@@ -29,8 +29,8 @@ class MainWindow(QMainWindow):
 
         self.methods = ["Rounding", "Matching", "Global"]
         self.method_choice: int = 0 
-        self.sliders = [[], [], []]
-        self.slider_values = [[], [], []]
+        self.sliders = [[], [], [], []]
+        self.slider_values = [[], [], [], []]
         
         self.construct_sidebar(button_layout)
         self.construct_menubar()
@@ -66,16 +66,17 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.combo)
         self.combo.currentIndexChanged.connect(self.dropdown_changed)
 
+        # General sliders 
+
         # sliders rounding method 
-        
 
         # sliders matching method
-        self.add_slider(layout, "Label Horizontal Weight", 0, 200, 0, slider_set=1)
+        self.add_slider(layout, "Label Horizontal Weight", 0, 200, 0, slider_set=2)
 
         # sliders global method
-        self.add_slider(layout, "Bend penalty", 0, 50, 0, slider_set=2, tick_size=0.1)
-        self.add_slider(layout, "Label Horizontal Weight", 0, 200, 0, slider_set=2)
-        self.add_slider(layout, "Label Same-Side Weight", 0, 100, 0, slider_set=2)
+        self.add_slider(layout, "Bend penalty", 0, 50, 0, slider_set=3, tick_size=0.1)
+        self.add_slider(layout, "Label Horizontal Weight", 0, 200, 0, slider_set=3)
+        self.add_slider(layout, "Label Same-Side Weight", 0, 100, 0, slider_set=3)
 
         # Exectue chosen method 
         add_sidebar_button(layout, "GO!", lambda: self.do_port_assign())
@@ -91,6 +92,10 @@ class MainWindow(QMainWindow):
         # Buttons to control the layout algorithm
         add_group_separator(layout)
         layout.addWidget(QLabel("Layout"))
+
+        # general slider
+        self.add_slider(layout, "Label distance", 0, 50, 20, slider_set=0)
+
         add_sidebar_button(layout, "Update layout", lambda: self.do_layout())
         self.canvas.auto_update = QCheckBox("Auto-update")
         self.canvas.auto_update.setChecked(False)
@@ -108,9 +113,10 @@ class MainWindow(QMainWindow):
         self.dropdown_changed(0)
     
     def dropdown_changed(self, index: int):
-        self.method_choice = index 
+        # We add one because the first slider set is for general sliders 
+        self.method_choice = index + 1
 
-        for slider_set in self.sliders: 
+        for slider_set in self.sliders[1:]: 
             for (label, slider) in slider_set: 
                 label.hide()
                 slider.hide() 
@@ -139,15 +145,19 @@ class MainWindow(QMainWindow):
 
     def update_slider_value(self, value: float, slider_set: int, slider: int, tick_size=1):
         self.slider_values[slider_set][slider] = value * tick_size
-        print(self.slider_values)
+
+        # For the label distance, needs to be set in canvas also
+        if (slider_set==0 and slider==0): 
+            self.canvas.label_dist = value * tick_size
+  
         if self.auto_update_port.isChecked(): 
             self.do_port_assign()
     
     def do_port_assign(self): 
         match self.method_choice: 
-            case 0: self.do_assign_round()
-            case 1: self.do_assign_matching()
-            case 2: self.do_assign_ilp()
+            case 1: self.do_assign_round()
+            case 2: self.do_assign_matching()
+            case 3: self.do_assign_ilp()
 
     def do_assign_round(self):
         port_assign.assign_by_rounding(self.canvas.network)
@@ -156,15 +166,15 @@ class MainWindow(QMainWindow):
         self.canvas.render()
 
     def do_assign_matching(self):
-        port_assign.assign_by_local_matching(self.canvas.network, self.slider_values[1][0])
+        port_assign.assign_by_local_matching(self.canvas.network, self.slider_values[2][0])
         self.update_layout_if_auto()
         self.canvas.history_checkpoint("Assign ports by matching")
         self.canvas.render()
 
     def do_assign_ilp(self):
-        port_assign.assign_by_ilp(self.canvas.network, self.slider_values[2][0], self.slider_values[2][1], self.slider_values[2][2])
+        port_assign.assign_by_ilp(self.canvas.network, self.slider_values[3][0], self.slider_values[3][1], self.slider_values[3][2])
         self.update_layout_if_auto()
-        self.canvas.history_checkpoint(f"Assign ports globally (bend cost {self.slider_values[2][0]})")
+        self.canvas.history_checkpoint(f"Assign ports globally (bend cost {self.slider_values[3][0]})")
         self.canvas.render()
 
     def do_zoom_to_fit(self):
@@ -181,7 +191,7 @@ class MainWindow(QMainWindow):
             self.do_layout()
 
     def do_layout(self):
-        if layout.layout_lp(self.canvas.network) is False:
+        if layout.layout_lp(self.canvas.network, label_dist=self.slider_values[0][0]) is False:
             print( "user\t"+"Failed to realize layout.")
             m = QMessageBox()
             m.setText("Failed to realize layout.")

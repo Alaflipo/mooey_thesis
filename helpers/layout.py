@@ -15,7 +15,7 @@ min_dist = 100
 bend_short = 0.5
 bend_long = 1
 
-def layout_lp( net: Network, stable_node:Node = None ):
+def layout_lp( net: Network, label_dist:int = 20, stable_node:Node = None ):
     
 
     start = perf_counter()
@@ -64,7 +64,9 @@ def layout_lp( net: Network, stable_node:Node = None ):
     for v in net.nodes.values(): 
         v.label_node.xvar = solver.NumVar(0, solver.infinity(), v.name+'_label_x')
         v.label_node.yvar = solver.NumVar(0, solver.infinity(), v.name+'_label_x')
-        objective += edge_constraint( solver, objective, v, v.label_node.port, v.label_node, v.label_node.text_width)
+        print('runs')
+        objective += edge_constraint( solver, objective, v, v.label_node.port, v.label_node, v.label_node.text_width + label_dist)
+        print('hello', v)
 
     # Space the stations on degree 2 paths
     seen = dict()

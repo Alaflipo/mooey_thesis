@@ -1,4 +1,4 @@
-from PySide6.QtGui import QColor, QPainterPath, QPen, QFont
+from PySide6.QtGui import QColor, QPainterPath, QPen, QFont, QPainter
 from PySide6.QtCore import Qt
 
 from elements.network import *
@@ -7,6 +7,11 @@ from math import sqrt
 import ui
 
 diag = 1/sqrt(2) # notational convenience
+
+rotation_factor = [0, -45, -90, 45, 0, -45, -90, 45]
+
+def opposite_port( p ):
+    return (p+4)%8
 
 port_offset = [ QPointF(-1,0)
               , QPointF(-diag,diag)
@@ -20,7 +25,7 @@ port_offset = [ QPointF(-1,0)
 
 font = QFont("Helvetica", 30, QFont.Bold)
 
-def render_network( painter, net: Network, show_labels ):
+def render_network( painter: QPainter, net: Network, show_labels ):
 
     # Coordinate system axes
     painter.setPen(QPen(QColor('lightgray'),10))
@@ -93,18 +98,20 @@ def render_network( painter, net: Network, show_labels ):
         if show_labels: painter.drawText( v.pos + QPointF(ui.bezier_radius,10), v.name )
 
         # Draw bouding box label
+        painter.setPen(QPen(QColor('lightgray'),20))
         if net.layout_set: 
-            painter.save()
-            painter.translate(handle_label_position(v, v.label_node.port))
-            painter.setPen(QPen(QColor('lightgray'),20))
-            painter.drawLine(QPointF(0,0), v.label_node.head - v.pos)
-            painter.restore()
+            painter.drawLine(v.label_node.head, v.label_node.end) 
+            
+            # painter.drawPolygon(v.label_node.rectangle_points)
+
+        # Nice algo for determining rectangle overlap: https://stackoverflow.com/questions/10962379/how-to-check-intersection-between-2-rotated-rectangles
 
         # Draw text in bounding box  
+        painter.setPen(QPen(QColor('black'),20))
+        painter.setFont(QFont("Arial", 15))
         painter.save()
         painter.translate(handle_label_text_position(v, v.label_node.port))
-        if v.label_node.port is not None: painter.rotate(handle_label_rotation(v.label_node.port))   
-        painter.setFont(QFont("Arial", 15))
+        if v.label_node.port is not None: painter.rotate(rotation_factor[v.label_node.port])   
         painter.drawText( QPointF(0, 5), v.label )
         painter.restore()
 
@@ -112,24 +119,20 @@ def render_network( painter, net: Network, show_labels ):
 def handle_position( v, p ):
     return v.pos + ui.rose_radius*port_offset[p]
 
-def handle_label_rotation(p: int): 
-    rotation_factor = [0, -45, -90, 45, 0, -45, -90, 45]
-    return rotation_factor[p]
-
-def handle_label_position(v: Node, p: int): 
+def handle_label_pos(point: QPointF, p: int): 
     if p is not None: 
-        return v.pos + 30*port_offset[p]
+        return point + 30*port_offset[p]
     else: 
-        return v.pos + 30*port_offset[0]
+        return point + 30*port_offset[0]
     
 def handle_label_text_position(v: Node, p: int): 
     if p is not None: 
         if p in [0,1,2,7]: 
-            return v.label_node.head + 30*port_offset[p]
+            return v.label_node.head
         else: 
-            return v.pos + 30*port_offset[p]
+            return v.label_node.end
     else: 
-        return v.pos + 30*port_offset[0]
+        return v.pos
 
 def free_edge_handle_position( v, e ):
     dir = e.direction(v).toPointF()

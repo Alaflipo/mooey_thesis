@@ -24,11 +24,26 @@ def cost_matrix_labels(v: Node, label_strength: float, mid_point_x):
     edge_angles = [ e.geo_angle(v) for e in v.edges ]
     port_edge_matrix = np.matrix( [ [ angle_error(pa,ea)**2 for pa in port_angles ] for ea in edge_angles ] )
     wl = [0.01 * label_strength, 0.02 * label_strength, 0.03 * label_strength]
+    
+    ### Based on lines 
+    if len(v.edges) <= 2: 
+        return left_wm(port_edge_matrix, wl) if v.left_line else right_wm(port_edge_matrix, wl)
+    else : 
+        return left_wm(port_edge_matrix, wl) if v.geo_pos.x() <= mid_point_x else right_wm(port_edge_matrix, wl)
 
-    if v.geo_pos.x() <= mid_point_x: 
-        return np.vstack([port_edge_matrix, np.array([wl[0] / 2, wl[1] /2 , wl[2], wl[1], wl[0], wl[1], wl[2], wl[1] / 2])])
-    else: 
-        return np.vstack([port_edge_matrix, np.array([wl[0], wl[1], wl[2], wl[1] / 2, wl[0] / 2, wl[1] /2 , wl[2], wl[1]])])
+    ### OLD
+    # if v.geo_pos.x() <= mid_point_x: 
+    #     return np.vstack([port_edge_matrix, np.array([wl[0] / 2, wl[1] /2 , wl[2], wl[1], wl[0], wl[1], wl[2], wl[1] / 2])])
+    # else: 
+    #     return np.vstack([port_edge_matrix, np.array([wl[0], wl[1], wl[2], wl[1] / 2, wl[0] / 2, wl[1] /2 , wl[2], wl[1]])])
+
+# Left weighted matrix 
+def left_wm(port_edge_matrix, wl): 
+    return np.vstack([port_edge_matrix, np.array([wl[0] / 2, wl[1] /2 , wl[2], wl[1], wl[0], wl[1], wl[2], wl[1] / 2])])
+
+# Right weighted matrix 
+def right_wm(port_edge_matrix, wl): 
+    return np.vstack([port_edge_matrix, np.array([wl[0], wl[1], wl[2], wl[1] / 2, wl[0] / 2, wl[1] /2 , wl[2], wl[1]])])
 
 ### ROUNDING ###
 
@@ -117,9 +132,9 @@ def assign_by_ilp( net: Network, bend_cost=1, label_hor_strength=1, label_side_s
     # Labels on the same side
     seen = dict()
     for v in list(net.nodes.values()):
-        if v in seen: continue
+        if v.name in seen: continue
         if is_deg2(v):
-            seen[id(v)] = True
+            seen[v.name] = True
             path1 = spacewalk( v.edges[0].other(v), v, seen )
             path2 = spacewalk( v.edges[1].other(v), v, seen )
             walk = path1 + [v] + [v for v in reversed(path2)]
@@ -127,7 +142,7 @@ def assign_by_ilp( net: Network, bend_cost=1, label_hor_strength=1, label_side_s
             for p in range(8): 
                 for a, b in zip(walk,walk[1:]):
                     penalty = solver.BoolVar(f'label_{a.name}_{b.name}')
-                    objective += label_side_strength/10 *penalty
+                    objective += label_side_strength/10 * penalty
                     solver.Add( penalty >= portvars_labels[a][p] - portvars_labels[b][p])
                     # solver.Add( penalty <= portvars_labels[a][p] - portvars_labels[b][p])
 
@@ -159,13 +174,13 @@ def is_deg2(v: Node):
     return len(v.edges)==2
 
 def spacewalk( v: Node, prev, seen ):
-    seen[v] = True
+    seen[v.name] = True
     walk = []
     if is_deg2(v):
         v0 = v.edges[0].other(v)
         v1 = v.edges[1].other(v)
         next = v0 if v1==prev else v1
-        if not id(next) in seen:
+        if not next.name in seen:
             walk = spacewalk( next, v, seen )
     walk.append(v)
     return walk

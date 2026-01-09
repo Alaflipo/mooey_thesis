@@ -24,11 +24,12 @@ def read_network_from_loom(filename):
                 prop = feat['properties']
                 s = prop['from']
                 t = prop['to']
+                id = prop['lines'][0]['id']
                 if len(prop['lines'])==1:
                     color = prop['lines'][0]['color']
                 else:
                     color = '000000'
-                edge_staging.append( (s,t,color) )
+                edge_staging.append( (s,t,color,id) )
         
         # first_node = list(network.nodes.values())[0]
         # for i in range(20): 
@@ -37,14 +38,25 @@ def read_network_from_loom(filename):
         #     edge_staging.append((first_node.name, f'test{i}', '000000'))
         #     first_node = network.nodes[f'test{i}']
 
-        for s,t,color in edge_staging:
+        metro_lines: dict[str, list[Edge]] = {}
+
+        for s,t,color,id in edge_staging:
             s = network.nodes[s]
             assert isinstance(s, Node)
             t = network.nodes[t]
             assert isinstance(t, Node)
             e = add_edge(s,t)
             e.color = color
+            e.line_id = id
             network.edges.append( e )
+
+            # Add metro lines 
+            if id in metro_lines: 
+                metro_lines[id].append(e)
+            else: 
+                metro_lines[id] = [e]
+        
+        network.metro_lines = metro_lines
                 
     return network, data
 
@@ -54,7 +66,7 @@ def add_edge(s,t):
     t.edges.append(e)
     return e
 
-def export_loom( net, data ):
+def export_loom( net: Network, data ):
     # Put the layout from the Network into Loom's filedata,
     # so that when we run loom on it, it has our positions and bends.
     

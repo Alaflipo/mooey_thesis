@@ -37,8 +37,11 @@ class Canvas(QWidget):
         filename = 'loom-examples/wien.json'
         self.network, self.filedata = read_network_from_loom(filename)
         self.network.scale_by_shortest_edge( min_edge_scale )
+        self.network.find_degree_2_lines()
         self.network.calculate_mid_point()
 
+        self.label_dist:int = 20
+        
     def render(self):
         #self.network.clone()
         painter = QPainter(self.pixmap)
@@ -252,7 +255,6 @@ class Canvas(QWidget):
 
         # double click handles to straighten
         if doubleclick and event.buttons() == Qt.LeftButton:
-            print(ui.hover_edge, 'HEELLOOO')
             if ui.hover_edge is not None:
                 ui.hover_node.straighten_deg2( ui.hover_edge )
                 network_change = f'Straighten from "{ui.hover_node.label}" toward "{ui.hover_edge.other(ui.hover_node).label}" (double click)'
@@ -261,7 +263,7 @@ class Canvas(QWidget):
         ### Did we do anything? Then solve and render as appropriate, and to undo buffer
         if network_change is not None:
             if self.auto_update.isChecked():
-                resolve_shift = layout_lp(self.network,ui.hover_node)
+                resolve_shift = layout_lp(self.network, self.label_dist, ui.hover_node)
                 if resolve_shift:
                     self.view.translate(-resolve_shift.x(), -resolve_shift.y())
                     if self.auto_render.isChecked():
