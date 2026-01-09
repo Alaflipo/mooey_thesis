@@ -6,6 +6,8 @@ from PySide6.QtCore import QPointF, QLineF
 from PySide6.QtGui import QVector2D
 from PySide6.QtGui import QFont, QFontMetrics
 
+from shapely.geometry import Polygon
+
 def opposite_port( p ):
     return (p+4)%8
 
@@ -86,6 +88,22 @@ class Network:
             for v in line: 
                 v.left_line = midpoint_line.x() <= self.midpoint.x()
 
+    def check_label_overlaps(self): 
+        overlaps: list[tuple[Node]] = []
+        for v1 in self.nodes.values(): 
+            for v2 in self.nodes.values(): 
+                if v1 == v2: continue 
+                if (v2, v1) in overlaps: continue 
+                if v1.label_node.overlaps(v2.label_node): 
+                    overlaps.append((v1,v2))
+        return overlaps 
+    
+    def label_overlaps_with_rect(self, rect): 
+        for v in self.nodes.values(): 
+            if v.label_node.rectangle_points.overlaps(rect): 
+                return True
+        return False 
+
     def find_degree_2_lines(self): 
         self.deg_2_lines: list[list[Node]] = []
         seen: dict = dict()
@@ -144,7 +162,6 @@ class Node:
         if old_port is not None: self.ports[old_port] = None
         e.port[me] = i
         self.ports[i] = e
-        print('hello')
         return True
     
     def assign_both_ends( self, e: Edge, i: int, force=False ):
@@ -218,6 +235,12 @@ class Node:
             self.assign(self.edges[0],a)
             self.assign(self.edges[1],opposite_port(a))
         else: return False
+
+    def get_free_ports(self): 
+        free_ports = []
+        for i, port in enumerate(self.ports): 
+            if port == None: free_ports.append(i)
+        return free_ports
     
     def first_free_port(self, exceptions=[]): 
         for i, port in enumerate(self.ports): 
@@ -245,16 +268,25 @@ class Label:
         metrics = QFontMetrics(font)
         return metrics.horizontalAdvance(self.label_text)
     
+    def get_rectangle_port(self, port: int, label_dist: int): 
+        end = self.node.pos + ((self.text_width + label_dist) * port_offset[port])
+        return self.get_label_border(self.node.pos, end)
+    
     def set_position( self, x, y ):
         self.head = QPointF(x,y)
         self.end = self.head + (self.text_width * port_offset[opposite_port(self.port)])
-        normal = QLineF(self.node.pos, self.head).normalVector()
+        
+        self.rectangle_points = self.get_label_border(self.head, self.end)
+
+    def get_label_border(self, start: QPointF, end: QPointF):
+        normal = QLineF(start, end).normalVector()
         # The box height is 20 so we multiply by 10
         vector = (QVector2D(normal.dx(), normal.dy()).normalized() * 10).toPointF()
-        self.rectangle_points = [self.head + vector, self.head - vector, self.end - vector, self.end + vector]
+        rectangle_points = [end + vector, end - vector, start - vector, start + vector]
+        return Polygon([(p.x(), p.y()) for p in rectangle_points])
 
     def overlaps(self, other: Label): 
-        pass 
+        return self.rectangle_points.overlaps(other.rectangle_points) 
 
 
 class Edge:

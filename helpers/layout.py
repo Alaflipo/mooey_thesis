@@ -64,9 +64,7 @@ def layout_lp( net: Network, label_dist:int = 20, stable_node:Node = None ):
     for v in net.nodes.values(): 
         v.label_node.xvar = solver.NumVar(0, solver.infinity(), v.name+'_label_x')
         v.label_node.yvar = solver.NumVar(0, solver.infinity(), v.name+'_label_x')
-        print('runs')
         objective += edge_constraint( solver, objective, v, v.label_node.port, v.label_node, v.label_node.text_width + label_dist)
-        print('hello', v)
 
     # Space the stations on degree 2 paths
     seen = dict()
@@ -98,6 +96,11 @@ def layout_lp( net: Network, label_dist:int = 20, stable_node:Node = None ):
             if v.label_node: v.label_node.set_position( v.label_node.xvar.solution_value(), v.label_node.yvar.solution_value() )
             del(v.xvar)
             del(v.yvar)
+
+        for v1 in net.nodes.values(): 
+            for v2 in net.nodes.values(): 
+                if v1.label_node.overlaps(v2.label_node): 
+                    print(f'{v1.label} overlaps with {v2.label}')
 
         for e in net.edges:
             if e.bend is not None:

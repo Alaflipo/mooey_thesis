@@ -154,7 +154,6 @@ class Canvas(QWidget):
 
         if event.buttons() == Qt.RightButton:
             if ui.hover_edge:
-                print('hellooo?')
                 # Context menu when right-clicking a handle
                 menu = QMenu(self)
                 if not ui.hover_edge.free_at(ui.hover_node):

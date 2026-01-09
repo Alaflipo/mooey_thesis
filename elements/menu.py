@@ -102,6 +102,10 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.canvas.auto_update)
         add_sidebar_button(layout, "Reset", lambda: self.do_reset_layout())
 
+        add_group_separator(layout)
+        layout.addWidget(QLabel("Labels"))
+        add_sidebar_button(layout, "Fix label overlap", lambda: self.do_fix_label_overlap())
+
         # Buttons to control the rendering
         add_group_separator(layout)
         layout.addWidget(QLabel("Rendering"))
@@ -218,6 +222,23 @@ class MainWindow(QMainWindow):
         self.canvas.zoom_to_network()
         self.canvas.history_checkpoint("Reset layout")
         self.canvas.render()
+
+    def do_fix_label_overlap(self): 
+        overlaps = self.canvas.network.check_label_overlaps()
+        
+        for overlap in overlaps: 
+            # print(f'{overlap[0].label} with {overlap[1].label}')
+            found = False 
+            for v in overlap: 
+                for p in v.get_free_ports(): 
+                    rect_to_check = v.label_node.get_rectangle_port(p, label_dist=self.slider_values[0][0])
+                    if not self.canvas.network.label_overlaps_with_rect(rect_to_check): 
+                        v.assign_label(p)
+                        print(f'Assigned {v.label} to port {p}')
+                        found = True 
+                        break 
+                if found: break 
+        self.do_layout()
 
     def do_render(self, tag=None):
         if self.canvas.filedata is None:
