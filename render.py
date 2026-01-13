@@ -25,7 +25,7 @@ port_offset = [ QPointF(-1,0)
 
 font = QFont("Helvetica", 30, QFont.Bold)
 
-def render_network( painter: QPainter, net: Network, show_labels ):
+def render_network( painter: QPainter, net: Network, show_background ):
 
     # Coordinate system axes
     painter.setPen(QPen(QColor('lightgray'),10))
@@ -34,6 +34,22 @@ def render_network( painter: QPainter, net: Network, show_labels ):
     painter.drawText( 130, 10, "x" )
     painter.drawLine( 0, 0, 0, 100 )
     painter.drawText( 1, 150, "y" )
+
+    # render background 
+    if show_background: 
+        for e in net.edges: 
+            color = QColor('#'+e.color)
+            color.setAlpha(20) 
+            ui.edge_pen.setColor(color)
+            painter.setPen( ui.edge_pen )
+            painter.setBrush(Qt.NoBrush )
+
+            painter.drawLine(e.v[0].background_pos, e.v[1].background_pos)
+
+        for _, v in net.nodes.items(): 
+            painter.setPen(ui.node_pen_background)
+            painter.setBrush(ui.node_brush)
+            painter.drawEllipse(v.background_pos, 10, 10)
 
     # Draw the edges
     for e in net.edges:
@@ -93,9 +109,6 @@ def render_network( painter: QPainter, net: Network, show_labels ):
         painter.setPen(ui.node_pen)
         painter.setBrush(ui.node_brush)
         painter.drawEllipse(v.pos, 10, 10)
-        
-        # For station ID's 
-        if show_labels: painter.drawText( v.pos + QPointF(ui.bezier_radius,10), v.name )
 
         # Draw bouding box label
         painter.setPen(QPen(QColor('lightgray'),20))

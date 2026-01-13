@@ -9,7 +9,7 @@ diag = 1/sqrt(2) # notational convenience
 
 # How long must the distance from station to station be?
 # in the "short" and "long" cases?
-min_dist = 100
+# min_dist = 100
 # Factor for how long the distance to bend must be
 # in the "short" and "long" cases
 bend_short = 0.5
@@ -42,23 +42,23 @@ def layout_lp( net: Network, label_dist:int = 20, stable_node:Node = None ):
                 continue # Unconstrained edge
             else:
                 # Edge is assigned at v1
-                objective += edge_constraint( solver, objective, e.v[1], e.port[1], e.v[0], min_dist )
+                objective += edge_constraint( solver, objective, e.v[1], e.port[1], e.v[0], e.min_dist )
         else:
             if e.port[1] is None:
                 # Edge is assigned at v0
-                objective += edge_constraint( solver, objective, e.v[0], e.port[0], e.v[1], min_dist )
+                objective += edge_constraint( solver, objective, e.v[0], e.port[0], e.v[1], e.min_dist )
             else:
                 # Edge is assigned at both ends; could have a bend
                 if e.port[0]==opposite_port(e.port[1]):
                     # No bend; do arbitrary direction
-                    objective += edge_constraint( solver, objective, e.v[0], e.port[0], e.v[1], min_dist )
+                    objective += edge_constraint( solver, objective, e.v[0], e.port[0], e.v[1], e.min_dist )
                 else:
                     # Bend
                     e.bend = Node(0,0,f"bend-{e.v[0].name}-{e.v[1].name}")
                     e.bend.xvar = solver.NumVar(0,solver.infinity(), v.name+'_x')
                     e.bend.yvar = solver.NumVar(0,solver.infinity(), v.name+'_y')
-                    objective += edge_constraint( solver, objective, e.v[0], e.port[0], e.bend, min_dist*bend_length( e, 0 ) )
-                    objective += edge_constraint( solver, objective, e.v[1], e.port[1], e.bend, min_dist*bend_length( e, 1 ) )
+                    objective += edge_constraint( solver, objective, e.v[0], e.port[0], e.bend, e.min_dist*bend_length( e, 0 ) )
+                    objective += edge_constraint( solver, objective, e.v[1], e.port[1], e.bend, e.min_dist*bend_length( e, 1 ) )
 
 
     for v in net.nodes.values(): 
@@ -97,10 +97,10 @@ def layout_lp( net: Network, label_dist:int = 20, stable_node:Node = None ):
             del(v.xvar)
             del(v.yvar)
 
-        for v1 in net.nodes.values(): 
-            for v2 in net.nodes.values(): 
-                if v1.label_node.overlaps(v2.label_node): 
-                    print(f'{v1.label} overlaps with {v2.label}')
+        # for v1 in net.nodes.values(): 
+        #     for v2 in net.nodes.values(): 
+        #         if v1.label_node.overlaps(v2.label_node): 
+        #             print(f'{v1.label} overlaps with {v2.label}')
 
         for e in net.edges:
             if e.bend is not None:

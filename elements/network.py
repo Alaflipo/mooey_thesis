@@ -1,6 +1,7 @@
 from __future__ import annotations 
 
 from math import inf, atan2, pi, sqrt
+import math 
 
 from PySide6.QtCore import QPointF, QLineF
 from PySide6.QtGui import QVector2D
@@ -121,12 +122,38 @@ class Network:
                 continue 
             
             print(len(walk), [node.label for node in walk])
+
+    def find_min_max_geo(self): 
+        min_x, min_y = math.inf, math.inf
+        max_x, max_y = -math.inf, -math.inf
+        for _, v in self.nodes.items():
+            min_x = min(min_x, v.geo_pos.x())
+            min_y = min(min_y, v.geo_pos.y())
+            max_x = max(max_x, v.geo_pos.x())
+            max_y = max(max_y, v.geo_pos.y())
+        self.geo_min_max = (min_x, max_x, min_y, max_y)
+
+    def set_background_image(self): 
+        min_x, min_y = math.inf, math.inf
+        max_x, max_y = -math.inf, -math.inf
+        for _, v in self.nodes.items():
+            min_x = min(min_x, v.pos.x())
+            min_y = min(min_y, v.pos.y())
+            max_x = max(max_x, v.pos.x())
+            max_y = max(max_y, v.pos.y())
+        
+        min_x_geo, max_x_geo, min_y_geo, max_y_geo = self.geo_min_max
+        for _, v in self.nodes.items(): 
+            new_x = min_x + (v.geo_pos.x() - min_x_geo) * (max_x - min_x) / (max_x_geo - min_x_geo)
+            new_y = min_y + (v.geo_pos.y() - min_y_geo) * (max_y - min_y) / (max_y_geo - min_y_geo)
+            v.background_pos = QPointF(new_x, new_y)
             
 
 class Node:
     def __init__(self, x, y, name: str, label:str = "" ):
         self.pos: QPointF = QPointF(x,y)
         self.geo_pos: QPointF = self.pos
+        self.background_pos: QPointF = self.pos
         self.name: str = name
         self.label: str = label
 
@@ -154,7 +181,11 @@ class Node:
             self.port_number_label = port_number
 
     def assign(self, e: Edge, i: int, force=False) -> bool:
-        if self.ports[i] is not None:
+        if type(self.ports[i]) == Label: 
+            self.evict_label()
+            new_port = self.first_free_port(exceptions=[i])
+            self.assign_label(new_port)
+        elif self.ports[i] is not None:
             if force: self.evict(self.ports[i])
             else: return False
         me = e.id(self)
@@ -249,6 +280,20 @@ class Node:
             if port is None: 
                 return i 
         return None 
+    
+    def rad_to_port(self, angle:float): 
+        areas = [((1 + 2*i) * pi)/ 8 for i in range(8)]
+        for i in range(len(areas) - 1): 
+            if angle >= areas[i] and angle <= areas[i+1]: 
+                return (7 - i)
+        return 0  
+    
+    def check_for_closer_port(self, pos: QPointF):
+        dx = self.pos.x() - pos.x()
+        dy = self.pos.y() - pos.y()
+        angle_rad = math.atan2(dy, dx)  
+        angle_rad = angle_rad % (2 * math.pi)
+        return self.rad_to_port(angle_rad)
 
 class Label: 
 
@@ -296,6 +341,8 @@ class Edge:
         self.bend = None
         self.color: str = '000000'
         self.line_id: str = ''
+
+        self.min_dist: int = 100
     
     def id(self,v):
         if self.v[0]==v: return 0

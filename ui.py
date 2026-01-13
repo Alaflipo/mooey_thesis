@@ -6,6 +6,8 @@ hover_node = None
 hover_edge = None
 hover_empty_port = None
 
+drag_node = None 
+
 selected_node = None
 selected_edge = None
 
@@ -15,6 +17,8 @@ selected_label_node = None
 
 node_pen = QPen( QColor('black'), 5 )
 node_brush = QBrush( QColor('white') )
+
+node_pen_background = QPen(QColor(0,0,0,20), 5)
 
 rose_free_pen = QPen( QColor('lightgray'), 2 )
 rose_free_brush = QBrush( QColor('white') )

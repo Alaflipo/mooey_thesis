@@ -32,6 +32,7 @@ class Canvas(QWidget):
         # UI state
         self.old_mouse = None
         self.view = QTransform()
+        self.drag = False 
 
         # load a network
         filename = 'loom-examples/wien.json'
@@ -39,6 +40,7 @@ class Canvas(QWidget):
         self.network.scale_by_shortest_edge( min_edge_scale )
         self.network.find_degree_2_lines()
         self.network.calculate_mid_point()
+        self.network.find_min_max_geo()
 
         self.label_dist:int = 20
         
@@ -51,7 +53,7 @@ class Canvas(QWidget):
         # draw
         self.pixmap.fill( QColor('white') )
         ui.update_params( self.view.m11() ) # element [1,1] of the view matrix is scale in our case
-        render.render_network(painter, self.network, self.show_labels.isChecked() )
+        render.render_network(painter, self.network, self.show_background.isChecked() )
         self.update()
     
     def paintEvent(self, event):
@@ -100,6 +102,8 @@ class Canvas(QWidget):
     def mouseMoveEvent(self, event): self.handle_mouse(event)
     def mouseDoubleClickEvent(self, event): self.handle_mouse(event,doubleclick=True)
     def handle_mouse(self,event, press=False, release=False, doubleclick=False):
+
+        
 
         # Check what the current mouse position is
         pos = self.worldspace(event.position())
@@ -160,6 +164,11 @@ class Canvas(QWidget):
                     straighten = menu.addAction("Straighten")
                     menu.addSeparator()
                     evict = menu.addAction("Evict")
+                    menu.addSeparator()
+                    decrease_dist = None 
+                    if ui.hover_edge.min_dist > 100: 
+                        decrease_dist = menu.addAction("Decrease min dist")
+                    increase_dist = menu.addAction("Increase min dist")
                     action = menu.exec(self.mapToGlobal(event.position().toPoint()))
                     if action == evict:
                         assert ui.hover_node is not None
@@ -171,6 +180,12 @@ class Canvas(QWidget):
                         assert ui.hover_edge is not None
                         ui.hover_node.straighten_deg2(ui.hover_edge)
                         network_change = f'Straighten from "{ui.hover_node.label}" toward "{ui.hover_edge.other(ui.hover_node).label}" (context menu)'
+                    if action == increase_dist: 
+                        ui.hover_edge.min_dist += 50
+                        network_change = f'Added distance between "{ui.hover_node.label}" toward "{ui.hover_edge.other(ui.hover_node).label}" (context menu)'
+                    if action == decrease_dist: 
+                        ui.hover_edge.min_dist -= 50
+                        network_change = f'Added distance between "{ui.hover_node.label}" toward "{ui.hover_edge.other(ui.hover_node).label}" (context menu)'
             elif ui.hover_node is not None and ui.hover_empty_port is None:
                 if ui.hover_node.is_right_angle():
                     menu = QMenu(self)
@@ -258,13 +273,35 @@ class Canvas(QWidget):
                 ui.hover_node.straighten_deg2( ui.hover_edge )
                 network_change = f'Straighten from "{ui.hover_node.label}" toward "{ui.hover_edge.other(ui.hover_node).label}" (double click)'
 
+        # Node dragging
+        if press: 
+            self.drag = True 
+            ui.drag_node = ui.hover_node
+
+        if release: 
+            self.drag = False 
+
+        if self.drag: 
+            print(ui.selected_node)
+            for edge in ui.drag_node.edges: 
+                neighbour = edge.other(ui.drag_node)
+                closer_port = neighbour.check_for_closer_port(pos)
+                # print(edge.port_at(neighbour), closer_port)
+                if closer_port != edge.port_at(neighbour): 
+                    neighbour.assign_both_ends( edge, closer_port )
+                    network_change = f'drag - Reassign at "{ui.drag_node.label}" - "{neighbour.label}" to port {closer_port}'
 
         ### Did we do anything? Then solve and render as appropriate, and to undo buffer
         if network_change is not None:
             if self.auto_update.isChecked():
                 resolve_shift = layout_lp(self.network, self.label_dist, ui.hover_node)
                 if resolve_shift:
-                    self.view.translate(-resolve_shift.x(), -resolve_shift.y())
+                    if network_change[0:4] == 'drag': 
+                        # we translate to the node that we were dragging 
+                        self.view.translate(pos.x() - ui.drag_node.pos.x(), pos.y() - ui.drag_node.pos.y())
+                    else: 
+                        self.view.translate(-resolve_shift.x(), -resolve_shift.y())
+                    self.network.set_background_image()
                     if self.auto_render.isChecked():
                         export_loom(self.network,self.filedata)
                         render_loom( "render.json", "render.svg" )

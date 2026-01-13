@@ -51,10 +51,10 @@ class MainWindow(QMainWindow):
         add_group_separator(layout)
         layout.addWidget(QLabel("View"))
         add_sidebar_button(layout, "Zoom to fit", lambda: self.do_zoom_to_fit())
-        self.canvas.show_labels = QCheckBox("Show station IDs")
-        self.canvas.show_labels.setChecked(False)
-        self.canvas.show_labels.clicked.connect(lambda: self.canvas.render())
-        layout.addWidget(self.canvas.show_labels)
+        self.canvas.show_background = QCheckBox("Show Original")
+        self.canvas.show_background.setChecked(False)
+        self.canvas.show_background.clicked.connect(lambda: self.canvas.render())
+        layout.addWidget(self.canvas.show_background)
 
         # Buttons to control port assignment methods 
         add_group_separator(layout)
@@ -153,8 +153,8 @@ class MainWindow(QMainWindow):
         # For the label distance, needs to be set in canvas also
         if (slider_set==0 and slider==0): 
             self.canvas.label_dist = value * tick_size
-  
-        if self.auto_update_port.isChecked(): 
+            self.do_layout()
+        elif self.auto_update_port.isChecked(): 
             self.do_port_assign()
     
     def do_port_assign(self): 
@@ -207,11 +207,8 @@ class MainWindow(QMainWindow):
         self.canvas.history_checkpoint("Automated layout")
         if self.canvas.drawing_is_completely_oob():
             self.canvas.zoom_to_network()
+            self.canvas.network.set_background_image()
         self.canvas.render()
-
-    def update_layout_if_auto(self):
-        if self.canvas.auto_update.isChecked():
-            self.do_layout()
 
     def do_reset_layout(self):
         self.canvas.network.layout_set = False 
