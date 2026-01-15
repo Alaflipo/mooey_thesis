@@ -3,11 +3,11 @@ from __future__ import annotations
 from math import inf, atan2, pi, sqrt
 import math 
 
+import copy 
+
 from PySide6.QtCore import QPointF, QLineF
 from PySide6.QtGui import QVector2D
-from PySide6.QtGui import QFont, QFontMetrics
-
-from shapely.geometry import Polygon
+from PySide6.QtGui import QFont, QFontMetrics, QPolygonF, QPainterPath
 
 def opposite_port( p ):
     return (p+4)%8
@@ -34,14 +34,20 @@ class Network:
         self.midpoint: QPointF = QPointF(0,0)
         self.layout_set: bool = False 
 
+        self.geo_min_max = (0, 0, 0, 0)
+
     def clone(self):
         other = Network()
         other.midpoint = self.midpoint
+        other.layout_set = self.layout_set
+        other.geo_min_max = self.geo_min_max
         node_clones = dict()
         for k,v in self.nodes.items():
-            other_v = Node(v.pos.x(), v.pos.y(), v.name, v.label)
+            other_v = v.clone(v.pos.x(), v.pos.y(), v.name, v.label)
+            other_label = v.label_node.clone(other_v, v.label)
+            other_v.label_node = other_label
+            if other_label.port is not None: other_v.ports[other_label.port] = other_label
             node_clones[v] = other_v
-            other_v.geo_pos = v.geo_pos
             other.nodes[k] = other_v
         edge_clones = dict()
         for e in self.edges:
@@ -49,6 +55,7 @@ class Network:
             b = other.nodes[ e.v[1].name ]
             other_e = Edge(a,b)
             other_e.color = e.color
+            other_e.min_dist = e.min_dist
             edge_clones[e] = other_e
             a.edges.append( other_e )
             b.edges.append( other_e )
@@ -97,13 +104,28 @@ class Network:
                 if (v2, v1) in overlaps: continue 
                 if v1.label_node.overlaps(v2.label_node): 
                     overlaps.append((v1,v2))
+            for edge in self.edges: 
+                if v1.label_node.overlaps_edge(edge): 
+                    overlaps.append([v1])
         return overlaps 
     
-    def label_overlaps_with_rect(self, rect): 
+    def labels_overlaps_label(self, rect: QPolygonF): 
         for v in self.nodes.values(): 
-            if v.label_node.rectangle_points.overlaps(rect): 
+            if v.label_node.rectangle_points.intersects(rect): 
                 return True
         return False 
+    
+    def edges_overlaps_label(self, rect: QPolygonF): 
+        for edge in self.edges: 
+            if len(edge.v) == 2 and rect.intersects(QPolygonF([edge.v[0].pos, edge.v[1].pos])): 
+                return True 
+        return False 
+    
+    def overlaps_with_label(self, rect: QPolygonF): 
+        if self.edges_overlaps_label(rect): 
+            print('overlap edge')
+        # print(f'edges {self.edges_overlaps_label(rect)}')
+        return self.edges_overlaps_label(rect) or self.labels_overlaps_label(rect)
 
     def find_degree_2_lines(self): 
         self.deg_2_lines: list[list[Node]] = []
@@ -120,8 +142,6 @@ class Network:
                 self.deg_2_lines.append(walk)
             else: # We skip degree 1 and > 2 because they will be taken into account with one of the walks 
                 continue 
-            
-            print(len(walk), [node.label for node in walk])
 
     def find_min_max_geo(self): 
         min_x, min_y = math.inf, math.inf
@@ -150,7 +170,7 @@ class Network:
             
 
 class Node:
-    def __init__(self, x, y, name: str, label:str = "" ):
+    def __init__(self, x, y, name: str, label:str = ""):
         self.pos: QPointF = QPointF(x,y)
         self.geo_pos: QPointF = self.pos
         self.background_pos: QPointF = self.pos
@@ -164,6 +184,22 @@ class Node:
         self.ports = [None]*8
 
         self.left_line: bool = True 
+
+        self.locked: bool = False 
+
+    # Still need to add label_node and edges (edges and ports) on your own 
+    def clone(self, x, y, name, label) -> Node:
+        other = Node(x, y, name, label)
+        other.geo_pos = self.geo_pos
+        other.pos = self.pos 
+        other.left_line = self.left_line
+        other.locked = self.locked
+        return other 
+
+    def lock(self): 
+        self.locked = True 
+    def unlock(self): 
+        self.locked = False 
 
     def set_position( self, x, y ):
         self.pos = QPointF(x,y)
@@ -304,18 +340,30 @@ class Label:
         self.node: Node = node 
         self.head: QPointF = node.pos + QPointF(self.text_width, 10)
         self.geo_head: QPointF = self.head
+        self.end: QPointF = self.node
+        
         self.port: int | None = None 
 
-        self.rectangle_points = [None, None, None, None]
+        self.rectangle_points: QPolygonF = QPolygonF()
 
+    def clone(self, node, label) -> Label: 
+        other = Label(node, label)
+        other.head = self.head 
+        other.geo_head = self.geo_head
+        other.end = self.end 
+        other.port = self.port
+        other.rectangle_points = QPolygonF(self.rectangle_points)
+        return other
+    
     def measure_text_width(self): 
         font = QFont("Arial", 15)
         metrics = QFontMetrics(font)
         return metrics.horizontalAdvance(self.label_text)
     
-    def get_rectangle_port(self, port: int, label_dist: int): 
+    def get_rectangle_port(self, port: int, label_dist: int) -> QPolygonF: 
+        start = self.node.pos + (label_dist * port_offset[port])
         end = self.node.pos + ((self.text_width + label_dist) * port_offset[port])
-        return self.get_label_border(self.node.pos, end)
+        return self.get_label_border(start, end)
     
     def set_position( self, x, y ):
         self.head = QPointF(x,y)
@@ -323,15 +371,20 @@ class Label:
         
         self.rectangle_points = self.get_label_border(self.head, self.end)
 
-    def get_label_border(self, start: QPointF, end: QPointF):
+    def get_label_border(self, start: QPointF, end: QPointF) -> QPolygonF:
         normal = QLineF(start, end).normalVector()
         # The box height is 20 so we multiply by 10
         vector = (QVector2D(normal.dx(), normal.dy()).normalized() * 10).toPointF()
         rectangle_points = [end + vector, end - vector, start - vector, start + vector]
-        return Polygon([(p.x(), p.y()) for p in rectangle_points])
+        return QPolygonF(rectangle_points)
 
     def overlaps(self, other: Label): 
-        return self.rectangle_points.overlaps(other.rectangle_points) 
+        return self.rectangle_points.intersects(other.rectangle_points) 
+    
+    def overlaps_edge(self, edge: Edge): 
+        if len(edge.v) == 2: 
+            return self.rectangle_points.intersects(QPolygonF([edge.v[0].pos, edge.v[1].pos]))
+        return False 
 
 
 class Edge:
@@ -362,6 +415,21 @@ class Edge:
     # returns whether the edge is actually connected to v 
     def free_at(self,v):
         return self.port[self.id(v)]==None
+    
+    def length(self) -> float: 
+        return sqrt((self.v[0].pos.x()-self.v[1].pos.x())**2 + (self.v[0].pos.y()-self.v[1].pos.y())**2)
+    # returns the length of the two parts of a line when bend
+    # v depends the order of the length pieces 
+    def length_bend(self, node: Node) -> tuple[float]: 
+        assert self.bend
+        first_part = sqrt((node.pos.x()-self.bend.x())**2 + (node.pos.y()-self.bend.y())**2)
+        second_part = sqrt((self.bend.x()-self.other(node).pos.x())**2 + (self.bend.y()-self.other(node).pos.y())**2)
+        return (first_part, second_part)
+    
+    # (scaled) normal vector as point
+    def normal(self, scale=1): 
+        normal = QLineF(self.v[0].pos, self.v[1].pos).normalVector()
+        return (QVector2D(normal.dx(), normal.dy()).normalized() * scale).toPointF()
 
     def direction(self,v):
         return QVector2D(self.v[1-self.id(v)].pos - v.pos).normalized()

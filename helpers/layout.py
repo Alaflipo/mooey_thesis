@@ -108,7 +108,7 @@ def layout_lp( net: Network, label_dist:int = 20, stable_node:Node = None ):
                 e.bend = QPointF( e.bend.xvar.solution_value(), e.bend.yvar.solution_value() )
 
         if stable_node is not None: return stable_node.pos - old_stable_pos
-        else: return True
+        else: return None
     else:
         print( "stats\tlayout failed with status "+str(status))
         print(status)

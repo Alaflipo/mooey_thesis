@@ -19,9 +19,15 @@ def cost_matrix( v: Node):
 # Two things to check for: 
 # - We give priority to labels that are horizontal so 0 and 4 and don't want 2 and 6 and for the odd numbers they should be equal
 # - We want labels that are on the outside to appear on the outside (either do this by a weighted middle point of the network or check whether labels point towards the outer face instead of an inner face)
-def cost_matrix_labels(v: Node, label_strength: float, mid_point_x): 
+def cost_matrix_labels(v: Node, label_strength: float, mid_point_x, old_node: Node): 
     port_angles = [ i*(pi/4) for i in range(8) ]
-    edge_angles = [ e.geo_angle(v) for e in v.edges ]
+    edge_angles = []
+    for i,e in enumerate(v.edges): 
+        if old_node.locked: 
+            edge_angles.append(port_angles[old_node.edges[i].port_at(old_node)])
+        else: 
+            edge_angles.append(e.geo_angle(v))
+    # edge_angles = [ e.geo_angle(v) for e in v.edges ]
     port_edge_matrix = np.matrix( [ [ angle_error(pa,ea)**2 for pa in port_angles ] for ea in edge_angles ] )
     wl = [0.01 * label_strength, 0.02 * label_strength, 0.03 * label_strength]
     
@@ -62,11 +68,13 @@ def assign_by_rounding( net: Network ):
 
 from scipy.optimize import linear_sum_assignment
 def assign_by_local_matching( net: Network, label_strength: float ):
+    net_clone = net.clone()
+    clone_nodes = list(net_clone.nodes.values())
     net.evict_all_labels()
     net.evict_all_edges()
-    for v in net.nodes.values():
+    for vi, v in enumerate(net.nodes.values()):
         # Cost matrix for labels
-        costs = cost_matrix_labels(v, label_strength, net.midpoint.x())
+        costs = cost_matrix_labels(v, label_strength, net.midpoint.x(), clone_nodes[vi])
         _, cols = linear_sum_assignment(costs)
         for i,p in enumerate(cols[:-1]):
             v.assign( v.edges[int(i)], int(p) )
@@ -81,7 +89,8 @@ def assign_by_local_matching( net: Network, label_strength: float ):
 
 from ortools.linear_solver import pywraplp as lp
 def assign_by_ilp( net: Network, bend_cost=1, label_hor_strength=1, label_side_strength=1):
-
+    net_clone = net.clone()
+    clone_nodes = list(net_clone.nodes.values())
     net.evict_all_labels()
     net.evict_all_edges()
 
@@ -92,8 +101,8 @@ def assign_by_ilp( net: Network, bend_cost=1, label_hor_strength=1, label_side_s
     objective = solver.Sum([])
     portvars = dict()
     portvars_labels = dict()
-    for v in net.nodes.values():
-        costs = cost_matrix_labels(v, label_hor_strength, net.midpoint.x())
+    for vi, v in enumerate(net.nodes.values()):
+        costs = cost_matrix_labels(v, label_hor_strength, net.midpoint.x(), old_node=clone_nodes[vi])
         for i,e in enumerate(v.edges):
             my_portvars = [solver.BoolVar(f'pass_{v.name}_{i}_{p}') for p in range(8)]
             for p in range(8):

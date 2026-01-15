@@ -1,5 +1,6 @@
 from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QFrame, QLabel, QCheckBox, QMessageBox, QDialog, QSlider, QComboBox
-from PySide6.QtGui import Qt, QAction, QKeySequence
+from PySide6.QtGui import Qt, QAction, QKeySequence, QPolygonF
+from PySide6.QtCore import QPointF
 
 import datetime
 
@@ -221,6 +222,7 @@ class MainWindow(QMainWindow):
         self.canvas.render()
 
     def do_fix_label_overlap(self): 
+
         overlaps = self.canvas.network.check_label_overlaps()
         
         for overlap in overlaps: 
@@ -229,7 +231,7 @@ class MainWindow(QMainWindow):
             for v in overlap: 
                 for p in v.get_free_ports(): 
                     rect_to_check = v.label_node.get_rectangle_port(p, label_dist=self.slider_values[0][0])
-                    if not self.canvas.network.label_overlaps_with_rect(rect_to_check): 
+                    if not self.canvas.network.overlaps_with_label(rect_to_check): 
                         v.assign_label(p)
                         print(f'Assigned {v.label} to port {p}')
                         found = True 

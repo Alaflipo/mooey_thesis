@@ -1,13 +1,14 @@
 import math
 
 from PySide6.QtWidgets import QWidget, QSizePolicy, QMenu, QMessageBox, QFileDialog
-from PySide6.QtGui import QPainter, QPixmap, QColor, Qt, QTransform, QVector2D
+from PySide6.QtGui import QPainter, QPixmap, QColor, Qt, QTransform, QVector2D, QPolygonF
 from PySide6.QtCore import QPointF, QEvent
 
 from io_management.fileformat_loom import read_network_from_loom, export_loom, render_loom
 from io_management.fileformat_graphml import read_network_from_graphml
 
 from helpers.layout import layout_lp
+from helpers.port_assign import assign_by_local_matching
 
 from elements.network import Label
 
@@ -43,6 +44,8 @@ class Canvas(QWidget):
         self.network.find_min_max_geo()
 
         self.label_dist:int = 20
+
+        self.lasso_path: QPolygonF = QPolygonF()
         
     def render(self):
         #self.network.clone()
@@ -54,6 +57,7 @@ class Canvas(QWidget):
         self.pixmap.fill( QColor('white') )
         ui.update_params( self.view.m11() ) # element [1,1] of the view matrix is scale in our case
         render.render_network(painter, self.network, self.show_background.isChecked() )
+        render.render_lasso(painter, self.lasso_path)
         self.update()
     
     def paintEvent(self, event):
@@ -187,13 +191,28 @@ class Canvas(QWidget):
                         ui.hover_edge.min_dist -= 50
                         network_change = f'Added distance between "{ui.hover_node.label}" toward "{ui.hover_edge.other(ui.hover_node).label}" (context menu)'
             elif ui.hover_node is not None and ui.hover_empty_port is None:
+                menu = QMenu(self)
+                lock_action, unlock_action, smoothen = None, None, None
+                if ui.hover_node.locked: 
+                    unlock_action = menu.addAction("Unlock node")
+                else: 
+                    lock_action = menu.addAction("Lock node")
+                menu.addSeparator()
                 if ui.hover_node.is_right_angle():
-                    menu = QMenu(self)
                     smoothen = menu.addAction("Smoothen")
-                    action = menu.exec(self.mapToGlobal(event.position().toPoint()))
-                    if action == smoothen:
-                        ui.hover_node.smoothen()
-                        network_change = f'Smoothen "{ui.hover_node.label}"'
+
+                action = menu.exec(self.mapToGlobal(event.position().toPoint()))
+                if action == smoothen:
+                    ui.hover_node.smoothen()
+                    network_change = f'Smoothen "{ui.hover_node.label}"'
+                if action == lock_action: 
+                    ui.hover_node.lock()
+                    network_change = f'Locked {ui.hover_node.label}'
+                if action == unlock_action: 
+                    ui.hover_node.unlock()
+                    network_change = f'Unlocked {ui.hover_node.label}'
+                print(network_change)
+                
                 if False and ui.hover_node.is_straight_through():
                     v = ui.hover_node
                     if (not v.edges[0].consistent_ports()) ^ (not v.edges[1].consistent_ports()):
@@ -216,7 +235,6 @@ class Canvas(QWidget):
 
 
         if press and event.buttons() == Qt.LeftButton:
-            print( ui.hover_node, ui.hover_edge, ui.hover_empty_port )
             if ui.selected_node is None:
                 # nothing was selected: select the thing we clicked on
                 ui.selected_node = ui.hover_node
@@ -232,7 +250,7 @@ class Canvas(QWidget):
                     ui.selected_edge = ui.hover_edge
                 #else: leave selection alone, maybe mouse release will do something
             
-            if ui.selected_label_node is None and ui.hover_node.label_node.port == ui.hover_empty_port: 
+            if ui.selected_label_node is None and ui.hover_node and ui.hover_node.label_node.port == ui.hover_empty_port: 
                 ui.selected_label_node = ui.hover_node
 
         if release and ui.selected_edge is not None:
@@ -274,33 +292,60 @@ class Canvas(QWidget):
                 network_change = f'Straighten from "{ui.hover_node.label}" toward "{ui.hover_edge.other(ui.hover_node).label}" (double click)'
 
         # Node dragging
-        if press: 
+        if press and event.buttons() == Qt.LeftButton: 
             self.drag = True 
             ui.drag_node = ui.hover_node
 
         if release: 
             self.drag = False 
 
-        if self.drag: 
-            print(ui.selected_node)
+            # For lasso select 
+            if len(self.lasso_path.toList()) >= 3: 
+                for _, v in self.network.nodes.items(): 
+                    if self.lasso_path.containsPoint(v.pos, Qt.OddEvenFill): 
+                        v.locked = not v.locked
+            network_change = f'Lasso lock/unlock'
+            self.lasso_path = QPolygonF()
+
+        if self.drag and ui.drag_node: 
             for edge in ui.drag_node.edges: 
-                neighbour = edge.other(ui.drag_node)
-                closer_port = neighbour.check_for_closer_port(pos)
-                # print(edge.port_at(neighbour), closer_port)
-                if closer_port != edge.port_at(neighbour): 
-                    neighbour.assign_both_ends( edge, closer_port )
-                    network_change = f'drag - Reassign at "{ui.drag_node.label}" - "{neighbour.label}" to port {closer_port}'
+                current_edge = edge 
+                current_node = ui.drag_node
+
+                dif = ui.drag_node.pos - pos
+                dist = math.sqrt(dif.x()**2 + dif.y()**2)
+                depth = int(2*dist/current_edge.min_dist)
+                
+                for i in range(depth): 
+                    current_node.lock()
+                    neighbour = current_edge.other(current_node)
+                    closer_port = neighbour.check_for_closer_port(pos)
+                    # print(edge.port_at(neighbour), closer_port)
+                    if closer_port != current_edge.port_at(neighbour): 
+                        neighbour.assign_both_ends( current_edge, closer_port )
+                        network_change = f'drag - Reassign at "{current_node.label}" - "{neighbour.label}" to port {closer_port}'
+                    current_node = neighbour
+                    # otherwise it will try to acces one degree nodes 
+                    if len(current_node.edges) != 2: 
+                        break 
+                    current_edge = current_node.edges[1] if current_edge == current_node.edges[0] else current_node.edges[0]
+        
+        # Lasso select 
+        if self.drag and ui.drag_node is None: 
+            self.lasso_path.append(pos)
+
 
         ### Did we do anything? Then solve and render as appropriate, and to undo buffer
         if network_change is not None:
             if self.auto_update.isChecked():
                 resolve_shift = layout_lp(self.network, self.label_dist, ui.hover_node)
+                print(resolve_shift)
                 if resolve_shift:
-                    if network_change[0:4] == 'drag': 
-                        # we translate to the node that we were dragging 
-                        self.view.translate(pos.x() - ui.drag_node.pos.x(), pos.y() - ui.drag_node.pos.y())
-                    else: 
-                        self.view.translate(-resolve_shift.x(), -resolve_shift.y())
+                    # if network_change[0:4] == 'drag': 
+                    #     # we translate to the node that we were dragging 
+                    #     self.view.translate(pos.x() - ui.drag_node.pos.x(), pos.y() - ui.drag_node.pos.y())
+                    # else: 
+                    self.view.translate(-resolve_shift.x(), -resolve_shift.y())
                     self.network.set_background_image()
                     if self.auto_render.isChecked():
                         export_loom(self.network,self.filedata)

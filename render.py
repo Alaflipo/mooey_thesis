@@ -1,4 +1,4 @@
-from PySide6.QtGui import QColor, QPainterPath, QPen, QFont, QPainter
+from PySide6.QtGui import QColor, QPainterPath, QPen, QFont, QPainter, QPolygonF
 from PySide6.QtCore import Qt
 
 from elements.network import *
@@ -9,6 +9,8 @@ import ui
 diag = 1/sqrt(2) # notational convenience
 
 rotation_factor = [0, -45, -90, 45, 0, -45, -90, 45]
+
+min_edge_length = 100 
 
 def opposite_port( p ):
     return (p+4)%8
@@ -101,12 +103,29 @@ def render_network( painter: QPainter, net: Network, show_background ):
                 if e==ui.hover_edge: painter.setBrush( ui.highlight_brush )
                 handle_pos = free_edge_handle_position(ui.hover_node, e)
                 painter.drawEllipse(handle_pos,ui.handle_radius,ui.handle_radius)
+            
+            # For minimal length indicator
+            if (e.length() >= min_edge_length): 
+                if not e.bend: 
+                    draw_indicator_lines(painter, QLineF(ui.hover_node.pos, e.other(ui.hover_node).pos))
+                else: 
+                    first_part = QLineF(ui.hover_node.pos, e.bend)
+                    draw_indicator_lines(painter, first_part)
+                    left_over = (first_part.length() % min_edge_length)
+                    second_part = QLineF(e.bend, e.other(ui.hover_node).pos)
+                    draw_indicator_lines(painter, second_part, start=-1 * left_over)
+
 
     # Draw the nodes
     painter.setPen(ui.node_pen)
     painter.setBrush(ui.node_brush)
     for name, v in net.nodes.items():
-        painter.setPen(ui.node_pen)
+        
+        if v.locked: 
+            painter.setPen(ui.lock_pen)
+        else: 
+            painter.setPen(ui.node_pen)
+        
         painter.setBrush(ui.node_brush)
         painter.drawEllipse(v.pos, 10, 10)
 
@@ -127,6 +146,11 @@ def render_network( painter: QPainter, net: Network, show_background ):
         if v.label_node.port is not None: painter.rotate(rotation_factor[v.label_node.port])   
         painter.drawText( QPointF(0, 5), v.label )
         painter.restore()
+
+def render_lasso(painter: QPainter, points: QPolygonF): 
+    ui.lasso_pen.setStyle(Qt.DashLine)
+    painter.setPen(ui.lasso_pen)
+    painter.drawPolyline(points)
 
 
 def handle_position( v, p ):
@@ -176,3 +200,14 @@ def draw_rose( painter, v: Node ):
             
 
         painter.drawEllipse( handle_position(v,i), ui.handle_radius, ui.handle_radius )
+
+# Direction is always from p1 to p2 
+def draw_indicator_lines(painter: QPainter, line: QLineF, start: float = 0): 
+    direction = QVector2D(line.p2() - line.p1()).normalized()
+    normal = line.normalVector()
+    normal = (QVector2D(normal.dx(), normal.dy()).normalized() * 4).toPointF()
+    for i in range(int((line.length() - start)/min_edge_length)): 
+        indicator_point = line.p1() + (direction * ((i+1) * 100 + start)).toPointF()
+        indicator_line = QLineF(indicator_point + normal, indicator_point - normal)
+        painter.setPen( ui.node_pen )
+        painter.drawLine(indicator_line)
