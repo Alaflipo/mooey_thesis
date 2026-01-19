@@ -30,8 +30,15 @@ def cost_matrix_labels(v: Node, label_strength: float, mid_point_x, old_node: No
     # edge_angles = [ e.geo_angle(v) for e in v.edges ]
     port_edge_matrix = np.matrix( [ [ angle_error(pa,ea)**2 for pa in port_angles ] for ea in edge_angles ] )
     wl = [0.01 * label_strength, 0.02 * label_strength, 0.03 * label_strength]
+
+    ### Based on lines add weights for labels 
     
-    ### Based on lines 
+    # if the node is locked we want to choose the port of the old label 
+    if old_node.locked: 
+        label_weights = [1 for i in range(8)]
+        label_weights[old_node.label_node.port] = 0 
+        return np.vstack([port_edge_matrix, label_weights])
+
     if len(v.edges) <= 2: 
         return left_wm(port_edge_matrix, wl) if v.left_line else right_wm(port_edge_matrix, wl)
     else : 
@@ -138,22 +145,37 @@ def assign_by_ilp( net: Network, bend_cost=1, label_hor_strength=1, label_side_s
             for p in range(8):
                 solver.Add( penalty >= portvars[(v,e)][p] - portvars[(v,f)][opposite_port(p)])
 
-    # Labels on the same side
-    seen = dict()
-    for v in list(net.nodes.values()):
-        if v.name in seen: continue
-        if is_deg2(v):
-            seen[v.name] = True
-            path1 = spacewalk( v.edges[0].other(v), v, seen )
-            path2 = spacewalk( v.edges[1].other(v), v, seen )
-            walk = path1 + [v] + [v for v in reversed(path2)]
+    # labels on the same degree 2 line should be on the same side 
+    for line in net.deg_2_lines: 
+        if len(line[0].edges) > 2: line.pop(0)
+        if len(line[len(line) - 1].edges) > 2: line.pop(len(line) - 1)
+        for p in range(8): 
+            for a, b in zip(line, line[1:]): 
+                penalty = solver.BoolVar(f'label_{a.name}_{b.name}')
+                objective += label_side_strength/10 * penalty
+                solver.Add( penalty >= portvars_labels[a][p] - portvars_labels[b][p])
+                # solver.Add( penalty <= portvars_labels[a][p] - portvars_labels[b][p])
 
-            for p in range(8): 
-                for a, b in zip(walk,walk[1:]):
-                    penalty = solver.BoolVar(f'label_{a.name}_{b.name}')
-                    objective += label_side_strength/10 * penalty
-                    solver.Add( penalty >= portvars_labels[a][p] - portvars_labels[b][p])
-                    # solver.Add( penalty <= portvars_labels[a][p] - portvars_labels[b][p])
+    # # Labels on the same side
+    # seen = dict()
+    # for v in list(net.nodes.values()):
+    #     if v.name in seen: continue
+    #     if is_deg2(v):
+    #         seen[v.name] = True
+    #         path1 = spacewalk( v.edges[0].other(v), v, seen )
+    #         path2 = spacewalk( v.edges[1].other(v), v, seen )
+    #         walk = path1 + [v] + [v for v in reversed(path2)]
+    #         print([node.label for node in walk])
+    #         for a, b in zip(walk,walk[1:]): 
+    #             print(a.label, b.label)
+    #         # label same side 
+    #         for p in range(8): 
+    #             for a, b in zip(walk,walk[1:]):
+    #                 if a == b: continue 
+    #                 penalty = solver.BoolVar(f'label_{a.name}_{b.name}')
+    #                 objective += label_side_strength/10 * penalty
+    #                 solver.Add( penalty >= portvars_labels[a][p] - portvars_labels[b][p])
+    #                 # solver.Add( penalty <= portvars_labels[a][p] - portvars_labels[b][p])
 
     solver.Minimize(objective)
     status = solver.Solve()
@@ -193,3 +215,68 @@ def spacewalk( v: Node, prev, seen ):
             walk = spacewalk( next, v, seen )
     walk.append(v)
     return walk
+
+def post_fix_overlap_ilp(net: Network, label_dist, label_hor_strength): 
+
+    overlaps = net.check_label_overlaps()
+
+    solver: lp.Solver = lp.Solver.CreateSolver("SCIP")
+    start = perf_counter()
+    objective = solver.Sum([])
+    portvars_labels = dict()
+
+    for vi, v in enumerate(net.nodes.values()):
+        costs = cost_matrix_labels(v, label_hor_strength, net.midpoint.x(), old_node=v)
+
+        free_ports = v.get_free_ports() + [v.label_node.port]
+        
+        #### For labeling ####
+        portvars_label = [solver.BoolVar(f'label_{v.name}_{p}') for p in free_ports]
+        for p in free_ports:
+            objective += costs[len(costs)-1,p] * portvars_label[p]
+        # Pick one port for each label 
+        solver.Add( solver.Sum(portvars_label)==1 )
+        portvars_labels[v] = portvars_label
+
+        for p in free_ports:
+            # assign at most one (edge or LABEL) to a port
+            solver.Add( solver.Sum([portvars_label[p]]) <= 1 )
+    
+    for overlap in overlaps: 
+        if len(overlap) == 2: 
+            pass 
+
+
+    ##### NOTE: make two rules: one, give a penalty to port assignments that overlap an edge. two: give a penalty to port assignments that make labels overlap with each other. ###
+
+    for overlap in overlaps: 
+        v = overlap[0]
+        p_candidates = []
+        for p in v.get_free_ports(): 
+            rect_to_check = v.label_node.get_rectangle_port(p, label_dist=label_dist)
+            if not net.overlaps_with_label(rect_to_check): 
+                p_candidates.append(p)
+        candidates = [solver.BoolVar(f'label_{v.name}_{p}') for p in p_candidates]
+        candidates()
+
+    solver.Minimize(objective)
+    status = solver.Solve()
+    runtime = perf_counter()-start
+    print( "pa-ilp\tPort assignment ILP runtime (s)\t" + str(runtime) )
+    print( 'Port assignment ILP runtime', runtime, 's' )
+    print( 'Solver status', status )
+    if status==0:
+        net.evict_all_edges()
+        for (v,e), x in portvars.items():
+            for p in range(8):
+                if x[p].solution_value()>0.5:
+                    v.assign(e,p)
+
+        # brute force simple port assignment
+        for v, x in portvars_labels.items(): 
+            for p in range(8): 
+                if x[p].solution_value() > 0.5: 
+                    v.assign_label(p)
+    else:
+        print( 'Port assignment ILP infeasible' )
+        print( "stats\tPort assignment ILP infeasible" )

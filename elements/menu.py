@@ -84,7 +84,7 @@ class MainWindow(QMainWindow):
         
         # Auto update port assignment 
         self.auto_update_port = QCheckBox("Auto-update Ports")
-        self.auto_update_port.setChecked(False)
+        self.auto_update_port.setChecked(True)
         layout.addWidget(self.auto_update_port)
 
         # evict port assignment choice 
@@ -99,7 +99,7 @@ class MainWindow(QMainWindow):
 
         add_sidebar_button(layout, "Update layout", lambda: self.do_layout())
         self.canvas.auto_update = QCheckBox("Auto-update")
-        self.canvas.auto_update.setChecked(False)
+        self.canvas.auto_update.setChecked(True)
         layout.addWidget(self.canvas.auto_update)
         add_sidebar_button(layout, "Reset", lambda: self.do_reset_layout())
 

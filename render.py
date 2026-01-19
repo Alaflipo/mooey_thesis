@@ -129,23 +129,20 @@ def render_network( painter: QPainter, net: Network, show_background ):
         painter.setBrush(ui.node_brush)
         painter.drawEllipse(v.pos, 10, 10)
 
-        # Draw bouding box label
-        painter.setPen(QPen(QColor('lightgray'),20))
-        if net.layout_set: 
-            painter.drawLine(v.label_node.head, v.label_node.end) 
-            
-            # painter.drawPolygon(v.label_node.rectangle_points)
+        if not ui.drag_node or ui.hover_node: 
+            # Draw bouding box label
+            painter.setPen(QPen(QColor('lightgray'),20))
+            if net.layout_set: 
+                painter.drawLine(v.label_node.head, v.label_node.end) 
 
-        # Nice algo for determining rectangle overlap: https://stackoverflow.com/questions/10962379/how-to-check-intersection-between-2-rotated-rectangles
-
-        # Draw text in bounding box  
-        painter.setPen(QPen(QColor('black'),20))
-        painter.setFont(QFont("Arial", 15))
-        painter.save()
-        painter.translate(handle_label_text_position(v, v.label_node.port))
-        if v.label_node.port is not None: painter.rotate(rotation_factor[v.label_node.port])   
-        painter.drawText( QPointF(0, 5), v.label )
-        painter.restore()
+            # Draw text in bounding box  
+            painter.setPen(QPen(QColor('black'),20))
+            painter.setFont(QFont("Arial", 15))
+            painter.save()
+            painter.translate(handle_label_text_position(v, v.label_node.port))
+            if v.label_node.port is not None: painter.rotate(rotation_factor[v.label_node.port])   
+            painter.drawText( QPointF(0, 5), v.label )
+            painter.restore()
 
 def render_lasso(painter: QPainter, points: QPolygonF): 
     ui.lasso_pen.setStyle(Qt.DashLine)

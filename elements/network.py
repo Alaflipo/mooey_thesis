@@ -96,6 +96,7 @@ class Network:
             for v in line: 
                 v.left_line = midpoint_line.x() <= self.midpoint.x()
 
+    # returns either two label vertices that overlap or one vertex that overlaps with an edge
     def check_label_overlaps(self): 
         overlaps: list[tuple[Node]] = []
         for v1 in self.nodes.values(): 

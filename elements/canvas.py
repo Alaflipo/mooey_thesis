@@ -298,13 +298,14 @@ class Canvas(QWidget):
 
         if release: 
             self.drag = False 
+            ui.drag_node = None 
 
             # For lasso select 
-            if len(self.lasso_path.toList()) >= 3: 
+            if len(self.lasso_path.toList()) >= 3 and ui.hover_node is None: 
                 for _, v in self.network.nodes.items(): 
                     if self.lasso_path.containsPoint(v.pos, Qt.OddEvenFill): 
                         v.locked = not v.locked
-            network_change = f'Lasso lock/unlock'
+                network_change = f'Lasso lock/unlock'
             self.lasso_path = QPolygonF()
 
         if self.drag and ui.drag_node: 
@@ -333,7 +334,6 @@ class Canvas(QWidget):
         # Lasso select 
         if self.drag and ui.drag_node is None: 
             self.lasso_path.append(pos)
-
 
         ### Did we do anything? Then solve and render as appropriate, and to undo buffer
         if network_change is not None:
