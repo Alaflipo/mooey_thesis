@@ -32,12 +32,13 @@ def cost_matrix_labels(v: Node, label_strength: float, mid_point_x, old_node: No
     wl = [0.01 * label_strength, 0.02 * label_strength, 0.03 * label_strength]
 
     ### Based on lines add weights for labels 
-    
+
+    ### This is now commented out because of the feature (when dragging nodes are locked in place, but still the label positions I want to have fixed in place)
     # if the node is locked we want to choose the port of the old label 
-    if old_node.locked: 
-        label_weights = [1 for i in range(8)]
-        label_weights[old_node.label_node.port] = 0 
-        return np.vstack([port_edge_matrix, label_weights])
+    # if old_node.locked: 
+    #     label_weights = [1 for i in range(8)]
+    #     label_weights[old_node.label_node.port] = 0 
+    #     return np.vstack([port_edge_matrix, label_weights])
 
     if len(v.edges) <= 2: 
         return left_wm(port_edge_matrix, wl) if v.left_line else right_wm(port_edge_matrix, wl)
@@ -232,32 +233,43 @@ def post_fix_overlap_ilp(net: Network, label_dist, label_hor_strength):
         
         #### For labeling ####
         portvars_label = [solver.BoolVar(f'label_{v.name}_{p}') for p in free_ports]
-        for p in free_ports:
-            objective += costs[len(costs)-1,p] * portvars_label[p]
+        for i, p in enumerate(free_ports):
+            objective += costs[len(costs)-1,p] * portvars_label[i]
         # Pick one port for each label 
         solver.Add( solver.Sum(portvars_label)==1 )
-        portvars_labels[v] = portvars_label
+        portvars_labels[v] = portvars_label   
 
-        for p in free_ports:
-            # assign at most one (edge or LABEL) to a port
-            solver.Add( solver.Sum([portvars_label[p]]) <= 1 )
+        # Penalty if we choose a different port then previously assigned 
+        for i in range(len(free_ports[:-1])):
+            penalty = solver.BoolVar(f'label_{v.name}_{free_ports[i]}')
+            objective += penalty
+            solver.Add( penalty >= portvars_labels[v][i])
     
+    # make sure that overlaps don't have the same port 
     for overlap in overlaps: 
         if len(overlap) == 2: 
-            pass 
+            v1 = overlap[0]
+            v2 = overlap[1]
+            solver.Add( portvars_labels[v1][len(portvars_labels[v1]) - 1] + portvars_labels[v2][len(portvars_labels[v2]) - 1] <= 1)
+        
+        # bigger penalty if we stay on the edge overlap 
+        if len(overlap) == 1: 
+            v = overlap[0]
+            penalty = solver.BoolVar(f'edge_overlap_{v.name}_{free_ports[i]}')
+            objective += 10 * penalty
+            solver.Add( penalty >= portvars_labels[v][len(portvars_labels[v]) - 1])
+    
+    ##### NOTE: For each vertex in which there is currently overlap with either edge or other label need to compare every configuration that is possible between them all.  ###
 
-
-    ##### NOTE: make two rules: one, give a penalty to port assignments that overlap an edge. two: give a penalty to port assignments that make labels overlap with each other. ###
-
-    for overlap in overlaps: 
-        v = overlap[0]
-        p_candidates = []
-        for p in v.get_free_ports(): 
-            rect_to_check = v.label_node.get_rectangle_port(p, label_dist=label_dist)
-            if not net.overlaps_with_label(rect_to_check): 
-                p_candidates.append(p)
-        candidates = [solver.BoolVar(f'label_{v.name}_{p}') for p in p_candidates]
-        candidates()
+    # for overlap in overlaps: 
+    #     v = overlap[0]
+    #     p_candidates = []
+    #     for p in v.get_free_ports(): 
+    #         rect_to_check = v.label_node.get_rectangle_port(p, label_dist=label_dist)
+    #         if not net.overlaps_with_label(rect_to_check): 
+    #             p_candidates.append(p)
+    #     candidates = [solver.BoolVar(f'label_{v.name}_{p}') for p in p_candidates]
+    #     candidates()
 
     solver.Minimize(objective)
     status = solver.Solve()
@@ -266,17 +278,24 @@ def post_fix_overlap_ilp(net: Network, label_dist, label_hor_strength):
     print( 'Port assignment ILP runtime', runtime, 's' )
     print( 'Solver status', status )
     if status==0:
-        net.evict_all_edges()
-        for (v,e), x in portvars.items():
-            for p in range(8):
-                if x[p].solution_value()>0.5:
-                    v.assign(e,p)
-
-        # brute force simple port assignment
         for v, x in portvars_labels.items(): 
-            for p in range(8): 
-                if x[p].solution_value() > 0.5: 
+            free_ports = v.get_free_ports() + [v.label_node.port]
+            for i, p in enumerate(free_ports): 
+                if x[i].solution_value() > 0.5: 
+                    v.evict_label()
                     v.assign_label(p)
     else:
         print( 'Port assignment ILP infeasible' )
         print( "stats\tPort assignment ILP infeasible" )
+
+def get_possible_ports(net: Network, label_dist: int) -> list[list[int]]:
+    free_ports_mat = []
+    for v in net.nodes.values():
+        free_ports = []
+        for p in v.get_free_ports(): 
+            rect_to_check = v.label_node.get_rectangle_port(p, label_dist=label_dist)
+            if not net.overlaps_with_label(rect_to_check): 
+                free_ports.append(p)
+        free_ports.append(v.label_node.port)
+        free_ports_mat.append(free_ports)
+    return free_ports_mat

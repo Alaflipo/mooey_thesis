@@ -202,6 +202,9 @@ class Node:
     def unlock(self): 
         self.locked = False 
 
+    def isfree(self, port: int) -> bool: 
+        return self.ports[port] == None 
+
     def set_position( self, x, y ):
         self.pos = QPointF(x,y)
 
@@ -243,10 +246,11 @@ class Node:
         e.port[me] = None
         e.bend = None
 
-    def assign_label(self, new_port): 
+    def assign_label(self, new_port, hor=False): 
         # First make sure that the label is evicted (if there is a new edge there we leave it)
         if self.label_node.port is not None and (type(self.ports[self.label_node.port]) == Label): 
             self.ports[self.label_node.port] = None 
+        self.label_node.center_label = hor
         self.label_node.port = new_port
         self.ports[new_port] = self.label_node 
 
@@ -337,11 +341,12 @@ class Label:
     def __init__(self, node: Node, label: str):
         self.label_text: str = label
         self.text_width = self.measure_text_width()
+        self.center_label: bool = False 
 
         self.node: Node = node 
         self.head: QPointF = node.pos + QPointF(self.text_width, 10)
         self.geo_head: QPointF = self.head
-        self.end: QPointF = self.node
+        self.end: QPointF = node.pos
         
         self.port: int | None = None 
 
@@ -354,6 +359,7 @@ class Label:
         other.end = self.end 
         other.port = self.port
         other.rectangle_points = QPolygonF(self.rectangle_points)
+        other.center_label = self.center_label
         return other
     
     def measure_text_width(self): 

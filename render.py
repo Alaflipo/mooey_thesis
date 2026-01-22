@@ -27,7 +27,7 @@ port_offset = [ QPointF(-1,0)
 
 font = QFont("Helvetica", 30, QFont.Bold)
 
-def render_network( painter: QPainter, net: Network, show_background ):
+def render_network( painter: QPainter, net: Network, show_background: bool, label_dist: int ):
 
     # Coordinate system axes
     painter.setPen(QPen(QColor('lightgray'),10))
@@ -92,18 +92,9 @@ def render_network( painter: QPainter, net: Network, show_background ):
             path.lineTo( b_start)
         painter.drawPath(path)
 
-    # Draw UI for the node close to the mouse
-    if ui.hover_node:
-        draw_rose( painter, ui.hover_node )
-        for e in ui.hover_node.edges:
-            if e.free_at(ui.hover_node):
-                painter.setPen( ui.rose_used_pen)
-                painter.setBrush( ui.rose_used_brush )
-                if e==ui.selected_edge: painter.setBrush( ui.selected_brush )
-                if e==ui.hover_edge: painter.setBrush( ui.highlight_brush )
-                handle_pos = free_edge_handle_position(ui.hover_node, e)
-                painter.drawEllipse(handle_pos,ui.handle_radius,ui.handle_radius)
-            
+    # for indicator lines (should be done earlier because that looks prettier)
+    if ui.hover_node: 
+        for e in ui.hover_node.edges:  
             # For minimal length indicator
             if (e.length() >= min_edge_length): 
                 if not e.bend: 
@@ -130,19 +121,44 @@ def render_network( painter: QPainter, net: Network, show_background ):
         painter.drawEllipse(v.pos, 10, 10)
 
         if not ui.drag_node or ui.hover_node: 
-            # Draw bouding box label
-            painter.setPen(QPen(QColor('lightgray'),20))
-            if net.layout_set: 
-                painter.drawLine(v.label_node.head, v.label_node.end) 
+            if not v.label_node.center_label: 
+                # Draw bouding box label
+                painter.setPen(QPen(QColor('lightgray'),20))
+                if net.layout_set: 
+                    painter.drawLine(v.label_node.head, v.label_node.end) 
 
-            # Draw text in bounding box  
-            painter.setPen(QPen(QColor('black'),20))
-            painter.setFont(QFont("Arial", 15))
-            painter.save()
-            painter.translate(handle_label_text_position(v, v.label_node.port))
-            if v.label_node.port is not None: painter.rotate(rotation_factor[v.label_node.port])   
-            painter.drawText( QPointF(0, 5), v.label )
-            painter.restore()
+                # Draw text in bounding box  
+                painter.setPen(QPen(QColor('black'),20))
+                painter.setFont(QFont("Arial", 15))
+                painter.save()
+                painter.translate(handle_label_text_position(v, v.label_node.port))
+                if v.label_node.port is not None: painter.rotate(rotation_factor[v.label_node.port])   
+                painter.drawText( QPointF(0, 5), v.label )
+                painter.restore()
+            else: 
+                # For horizontal labels 
+                vert_dist = label_dist if v.label_node.port == 2 else -label_dist
+                vert_dist_text = vert_dist + 5 if v.label_node.port == 2 else vert_dist + 5
+                painter.setPen(QPen(QColor('lightgray'),20))
+                painter.drawLine(v.pos + QPointF(-v.label_node.text_width/2, vert_dist), v.pos + QPointF(v.label_node.text_width/2, vert_dist))
+                
+                painter.setPen(QPen(QColor('black'),20))
+                painter.setFont(QFont("Arial", 15))
+                painter.drawText(v.pos + QPointF(-v.label_node.text_width/2, vert_dist_text), v.label)
+
+    
+    # Draw UI for the node close to the mouse
+    if ui.hover_node:
+        draw_rose( painter, ui.hover_node )
+        for e in ui.hover_node.edges:
+            if e.free_at(ui.hover_node):
+                painter.setPen( ui.rose_used_pen)
+                painter.setBrush( ui.rose_used_brush )
+                if e==ui.selected_edge: painter.setBrush( ui.selected_brush )
+                if e==ui.hover_edge: painter.setBrush( ui.highlight_brush )
+                handle_pos = free_edge_handle_position(ui.hover_node, e)
+                painter.drawEllipse(handle_pos,ui.handle_radius,ui.handle_radius)
+                
 
 def render_lasso(painter: QPainter, points: QPolygonF): 
     ui.lasso_pen.setStyle(Qt.DashLine)
@@ -150,8 +166,13 @@ def render_lasso(painter: QPainter, points: QPolygonF):
     painter.drawPolyline(points)
 
 
-def handle_position( v, p ):
+def handle_position( v: Node, p: int ):
     return v.pos + ui.rose_radius*port_offset[p]
+
+def handle_center_rose_position(v: Node, p: int): 
+    assert p == 8 or p == 9
+    if p == 8: return v.pos + (ui.rose_radius + ui.handle_radius + 10)*port_offset[2]
+    else: return v.pos - (ui.rose_radius + ui.handle_radius + 10)*port_offset[2]
 
 def handle_label_pos(point: QPointF, p: int): 
     if p is not None: 
@@ -194,9 +215,18 @@ def draw_rose( painter, v: Node ):
             painter.setBrush(ui.selected_brush)
         if is_hovered( v, i ):
             painter.setBrush(ui.highlight_brush)
-            
-
         painter.drawEllipse( handle_position(v,i), ui.handle_radius, ui.handle_radius )
+    
+    if ui.selected_node is not None and type(ui.selected_edge) == Label: 
+        vert_dist = [(ui.rose_radius + ui.handle_radius + 5), -1 * (ui.rose_radius + ui.handle_radius + 15)]
+        for i in range(2): 
+            # for the horizontal center labels
+            painter.setPen(ui.active_handle_pen)
+            painter.setBrush(ui.rose_free_brush)
+            if ui.hover_empty_port == i+8: 
+                painter.setBrush(ui.highlight_brush)
+            start = v.pos + QPointF(-2 * ui.handle_radius, vert_dist[i])
+            painter.drawRect(start.x(), start.y(), 4 * ui.handle_radius, 10)
 
 # Direction is always from p1 to p2 
 def draw_indicator_lines(painter: QPainter, line: QLineF, start: float = 0): 

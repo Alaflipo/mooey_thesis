@@ -1,17 +1,20 @@
 from PySide6.QtGui import QColor, QPen, QBrush 
 
-from elements.network import Node, Edge
+from elements.network import Node, Edge, Label
 
 # Some global UI state
 
 hover_node: Node | None = None
 hover_edge: Edge | None = None
 hover_empty_port: int | None = None
+hover_label: Label | None = None 
 
 drag_node = None 
+drag_label = None 
 
 selected_node = None
 selected_edge = None
+
 
 selected_label_node = None 
 

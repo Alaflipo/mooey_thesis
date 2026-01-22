@@ -29,7 +29,7 @@ class MainWindow(QMainWindow):
         self.canvas = Canvas()
 
         self.methods = ["Rounding", "Matching", "Global"]
-        self.method_choice: int = 0 
+        self.method_choice: int = 1 
         self.sliders = [[], [], [], []]
         self.slider_values = [[], [], [], []]
         
@@ -64,6 +64,7 @@ class MainWindow(QMainWindow):
         # Dropdown
         self.combo = QComboBox()
         self.combo.addItems(self.methods)
+        self.combo.setCurrentIndex(self.method_choice)
         layout.addWidget(self.combo)
         self.combo.currentIndexChanged.connect(self.dropdown_changed)
 
@@ -95,7 +96,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(QLabel("Layout"))
 
         # general slider
-        self.add_slider(layout, "Label distance", 0, 50, 20, slider_set=0)
+        self.add_slider(layout, "Label distance", 0, 50, 25, slider_set=0)
 
         add_sidebar_button(layout, "Update layout", lambda: self.do_layout())
         self.canvas.auto_update = QCheckBox("Auto-update")
@@ -115,7 +116,7 @@ class MainWindow(QMainWindow):
         self.canvas.auto_render.setChecked(False)
         layout.addWidget(self.canvas.auto_render)
 
-        self.dropdown_changed(0)
+        self.dropdown_changed(self.method_choice)
     
     def dropdown_changed(self, index: int):
         # We add one because the first slider set is for general sliders 
@@ -222,21 +223,23 @@ class MainWindow(QMainWindow):
         self.canvas.render()
 
     def do_fix_label_overlap(self): 
+        port_assign.post_fix_overlap_ilp(self.canvas.network, self.slider_values[0][0], self.slider_values[2][0])
 
-        overlaps = self.canvas.network.check_label_overlaps()
+        ##### Brute force solution ######
+        # overlaps = self.canvas.network.check_label_overlaps()
         
-        for overlap in overlaps: 
-            # print(f'{overlap[0].label} with {overlap[1].label}')
-            found = False 
-            for v in overlap: 
-                for p in v.get_free_ports(): 
-                    rect_to_check = v.label_node.get_rectangle_port(p, label_dist=self.slider_values[0][0])
-                    if not self.canvas.network.overlaps_with_label(rect_to_check): 
-                        v.assign_label(p)
-                        print(f'Assigned {v.label} to port {p}')
-                        found = True 
-                        break 
-                if found: break 
+        # for overlap in overlaps: 
+        #     # print(f'{overlap[0].label} with {overlap[1].label}')
+        #     found = False 
+        #     for v in overlap: 
+        #         for p in v.get_free_ports(): 
+        #             rect_to_check = v.label_node.get_rectangle_port(p, label_dist=self.slider_values[0][0])
+        #             if not self.canvas.network.overlaps_with_label(rect_to_check): 
+        #                 v.assign_label(p)
+        #                 print(f'Assigned {v.label} to port {p}')
+        #                 found = True 
+        #                 break 
+        #         if found: break 
         self.do_layout()
 
     def do_render(self, tag=None):

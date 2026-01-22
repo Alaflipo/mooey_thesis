@@ -43,7 +43,7 @@ class Canvas(QWidget):
         self.network.calculate_mid_point()
         self.network.find_min_max_geo()
 
-        self.label_dist:int = 20
+        self.label_dist:int = 25
 
         self.lasso_path: QPolygonF = QPolygonF()
         
@@ -56,7 +56,7 @@ class Canvas(QWidget):
         # draw
         self.pixmap.fill( QColor('white') )
         ui.update_params( self.view.m11() ) # element [1,1] of the view matrix is scale in our case
-        render.render_network(painter, self.network, self.show_background.isChecked() )
+        render.render_network(painter, self.network, self.show_background.isChecked(), self.label_dist )
         render.render_lasso(painter, self.lasso_path)
         self.update()
     
@@ -126,7 +126,20 @@ class Canvas(QWidget):
                 closest_dist = dist
                 ui.hover_node = v
 
+        # Determine which label is being hovered 
+        closest_dist = ui.hover_node_radius
+        for v in self.network.nodes.values(): 
+            dist = min(QVector2D(v.label_node.head - pos).length(), QVector2D(v.label_node.end - pos).length())
+            if dist < closest_dist: 
+                closest_dist = dist 
+                ui.hover_label = v.label_node
+        
+        if ui.hover_label: 
+            if not ui.hover_label.rectangle_points.containsPoint(pos, Qt.OddEvenFill): 
+                ui.hover_label = None
+
         # When the mouse is hovering a node: 
+       
         if ui.hover_node:
             closest_dist = ui.handle_radius
             # consider the rose
@@ -140,6 +153,15 @@ class Canvas(QWidget):
                     else:
                         ui.hover_edge = ui.hover_node.ports[i]
                         ui.hover_empty_port = None
+            
+            if (ui.selected_node is not None and type(ui.selected_edge) == Label): 
+                # for horizontal center label position
+                for i in range(2): 
+                    vec_to_label_center = render.handle_center_rose_position(ui.hover_node, i+8) - pos
+                    dist_to_center = max(abs(vec_to_label_center.x()/2), abs(vec_to_label_center.y()))
+                    if dist_to_center < ui.handle_radius: 
+                        ui.hover_empty_port = i + 8
+
             # consider free edges
             for e in ui.hover_node.edges:
                 if e.free_at(ui.hover_node):
@@ -200,8 +222,13 @@ class Canvas(QWidget):
                 menu.addSeparator()
                 if ui.hover_node.is_right_angle():
                     smoothen = menu.addAction("Smoothen")
+                menu.addSeparator()
+                center_label = menu.addAction("Center label")
 
                 action = menu.exec(self.mapToGlobal(event.position().toPoint()))
+                if action == center_label: 
+                    ui.hover_node.label_node.center_label = True 
+                    network_change = f'Centered label at {ui.hover_node.label}'
                 if action == smoothen:
                     ui.hover_node.smoothen()
                     network_change = f'Smoothen "{ui.hover_node.label}"'
@@ -267,7 +294,11 @@ class Canvas(QWidget):
                 if ui.hover_node==ui.selected_node and ui.hover_empty_port is not None:
 
                     if type(ui.selected_edge) == Label: 
-                        ui.selected_node.assign_label(ui.hover_empty_port)
+                        if ui.hover_empty_port >= 8: 
+                            ui.selected_node.assign_label(2 if ui.hover_empty_port == 8 else 6, hor=True)
+                            ui.selected_node.label_node.center_label = True 
+                        else: 
+                            ui.selected_node.assign_label(ui.hover_empty_port)
                         network_change = f'Reassign at "{ui.selected_node.label}" - label to port {ui.hover_empty_port}'
                     else: 
                         # we went from one handle to another handle on the same node.
@@ -295,10 +326,12 @@ class Canvas(QWidget):
         if press and event.buttons() == Qt.LeftButton: 
             self.drag = True 
             ui.drag_node = ui.hover_node
+            ui.drag_label = ui.hover_label
 
         if release: 
             self.drag = False 
             ui.drag_node = None 
+            ui.drag_label = None 
 
             # For lasso select 
             if len(self.lasso_path.toList()) >= 3 and ui.hover_node is None: 
@@ -307,6 +340,13 @@ class Canvas(QWidget):
                         v.locked = not v.locked
                 network_change = f'Lasso lock/unlock'
             self.lasso_path = QPolygonF()
+
+        if self.drag and ui.drag_label: 
+            closer_port = ui.drag_label.node.check_for_closer_port(pos)
+
+            if closer_port != ui.drag_label.port and ui.drag_label.node.isfree(closer_port): 
+                ui.drag_label.node.assign_label(closer_port)
+                network_change = f'drag label - Reassign label at {ui.drag_label.label_text} from {ui.drag_label.port} to {closer_port}'
 
         if self.drag and ui.drag_node: 
             for edge in ui.drag_node.edges: 
@@ -332,7 +372,7 @@ class Canvas(QWidget):
                     current_edge = current_node.edges[1] if current_edge == current_node.edges[0] else current_node.edges[0]
         
         # Lasso select 
-        if self.drag and ui.drag_node is None: 
+        if self.drag and ui.drag_node is None and ui.drag_label is None: 
             self.lasso_path.append(pos)
 
         ### Did we do anything? Then solve and render as appropriate, and to undo buffer
@@ -341,11 +381,11 @@ class Canvas(QWidget):
                 resolve_shift = layout_lp(self.network, self.label_dist, ui.hover_node)
                 print(resolve_shift)
                 if resolve_shift:
-                    # if network_change[0:4] == 'drag': 
-                    #     # we translate to the node that we were dragging 
-                    #     self.view.translate(pos.x() - ui.drag_node.pos.x(), pos.y() - ui.drag_node.pos.y())
-                    # else: 
-                    self.view.translate(-resolve_shift.x(), -resolve_shift.y())
+                    if network_change[0:4] == 'drag' and ui.drag_node and len(ui.drag_node.edges) >= 2: 
+                        # we translate to the node that we were dragging 
+                        self.view.translate(pos.x() - ui.drag_node.pos.x(), pos.y() - ui.drag_node.pos.y())
+                    else: 
+                        self.view.translate(-resolve_shift.x(), -resolve_shift.y())
                     self.network.set_background_image()
                     if self.auto_render.isChecked():
                         export_loom(self.network,self.filedata)
