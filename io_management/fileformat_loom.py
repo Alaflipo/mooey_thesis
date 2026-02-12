@@ -60,8 +60,21 @@ def read_network_from_loom(filename):
                 
     return network, data
 
+def example_network(): 
+    network = Network()
+    nodes = [Node( 5, -2, 'test1', 'test1' ), Node( 3, -4, 'test2', 'test2' ), Node( 5, -6, 'test3', 'test3' ), Node( 7, -4, 'test4', 'test4' )]
+    for node in nodes: 
+        network.nodes[node.name] = node 
+    for i in range(len(nodes)): 
+        edge = add_edge(nodes[i], nodes[(i+1)%len(nodes)])
+        network.edges.append(edge)
+    network.nodes['test5'] = Node(10, -4, 'test5', 'test5')
+    network.edges.append(add_edge(network.nodes['test5'], network.nodes['test4']))
+    return network
+
 def add_edge(s,t):
     e = Edge(s,t)
+    
     s.edges.append(e)
     t.edges.append(e)
     return e

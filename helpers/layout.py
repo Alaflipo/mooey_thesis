@@ -89,8 +89,8 @@ def layout_lp( net: Network, label_dist:int = 20, stable_node:Node = None ):
     status = solver.Solve()
     if status==lp.Solver.OPTIMAL:
         runtime = perf_counter()-start
-        print( "layout\tLayout LP runtime (s)\t" + str(runtime) )
-        print( "Layout LP runtime",perf_counter()-start,"s")
+        # print( "layout\tLayout LP runtime (s)\t" + str(runtime) )
+        # print( "Layout LP runtime",perf_counter()-start,"s")
         for v in net.nodes.values():
             v.set_position( v.xvar.solution_value(), v.yvar.solution_value() )
             if v.label_node: v.label_node.set_position( v.label_node.xvar.solution_value(), v.label_node.yvar.solution_value() )

@@ -4,18 +4,29 @@ from PySide6.QtWidgets import QWidget, QSizePolicy, QMenu, QMessageBox, QFileDia
 from PySide6.QtGui import QPainter, QPixmap, QColor, Qt, QTransform, QVector2D, QPolygonF
 from PySide6.QtCore import QPointF, QEvent
 
-from io_management.fileformat_loom import read_network_from_loom, export_loom, render_loom
+from io_management.fileformat_loom import read_network_from_loom, export_loom, render_loom, example_network
 from io_management.fileformat_graphml import read_network_from_graphml
 
 from helpers.layout import layout_lp
 from helpers.port_assign import assign_by_local_matching
 
-from elements.network import Label
+from elements.network import Label, Node, Edge 
 
 import render
 import ui
 
 min_edge_scale = 80
+
+diag = 1/math.sqrt(2)
+port_offset = [ QPointF(-1,0)
+              , QPointF(-diag,diag)
+              , QPointF(0,1)
+              , QPointF(diag,diag)
+              , QPointF(1,0)
+              , QPointF(diag,-diag)
+              , QPointF(0,-1)
+              , QPointF(-diag,-diag)
+              ]
 
 class Canvas(QWidget):
     def __init__(self):
@@ -38,6 +49,7 @@ class Canvas(QWidget):
         # load a network
         filename = 'loom-examples/wien.json'
         self.network, self.filedata = read_network_from_loom(filename)
+        # self.network = example_network()
         self.network.scale_by_shortest_edge( min_edge_scale )
         self.network.find_degree_2_lines()
         self.network.calculate_mid_point()
@@ -46,6 +58,7 @@ class Canvas(QWidget):
         self.label_dist:int = 25
 
         self.lasso_path: QPolygonF = QPolygonF()
+        self.group: list[Node] = []
         
     def render(self):
         #self.network.clone()
@@ -56,8 +69,11 @@ class Canvas(QWidget):
         # draw
         self.pixmap.fill( QColor('white') )
         ui.update_params( self.view.m11() ) # element [1,1] of the view matrix is scale in our case
+        render.render_concentric_circles(painter)
         render.render_network(painter, self.network, self.show_background.isChecked(), self.label_dist )
         render.render_lasso(painter, self.lasso_path)
+        render.render_group(painter, self.lasso_path, self.group)
+        
         self.update()
     
     def paintEvent(self, event):
@@ -328,19 +344,48 @@ class Canvas(QWidget):
             ui.drag_node = ui.hover_node
             ui.drag_label = ui.hover_label
 
+            if len(self.lasso_path.toList()) >= 3 and self.lasso_path.containsPoint(pos, Qt.OddEvenFill): 
+                self.drag_group = True 
+            else: 
+                self.lasso_path = QPolygonF()
+                self.drag_group = False 
+            
+            print(self.group)
+
         if release: 
             self.drag = False 
             ui.drag_node = None 
             ui.drag_label = None 
 
+            if self.drag_group: 
+                self.group = []
+                self.drag_group = False 
+                self.lasso_path = QPolygonF()
+
             # For lasso select 
-            if len(self.lasso_path.toList()) >= 3 and ui.hover_node is None: 
+            if len(self.lasso_path.toList()) >= 3 and ui.hover_node is None and event.modifiers() == Qt.ShiftModifier: 
                 for _, v in self.network.nodes.items(): 
                     if self.lasso_path.containsPoint(v.pos, Qt.OddEvenFill): 
                         v.locked = not v.locked
                 network_change = f'Lasso lock/unlock'
-            self.lasso_path = QPolygonF()
+                self.lasso_path = QPolygonF()
 
+            if len(self.lasso_path.toList()) >= 3 and ui.hover_node is None: 
+                self.group: list[Node] = []
+                outsider: list[Node, Edge] = []
+                for _, v in self.network.nodes.items(): 
+                    if self.lasso_path.containsPoint(v.pos, Qt.OddEvenFill): 
+                        self.group.append(v)
+                for v in self.group: 
+                    for e in v.edges: 
+                        if e.other(v) in self.group: 
+                            pass 
+                            # v.assign( e, (e.port_at(v) + 1) % 8)
+                        else: 
+                            outsider = [e.other(v), e]
+                if len(self.group) > 0: 
+                    self.group.append(outsider)
+            
         if self.drag and ui.drag_label: 
             closer_port = ui.drag_label.node.check_for_closer_port(pos)
 
@@ -348,6 +393,7 @@ class Canvas(QWidget):
                 ui.drag_label.node.assign_label(closer_port)
                 network_change = f'drag label - Reassign label at {ui.drag_label.label_text} from {ui.drag_label.port} to {closer_port}'
 
+        gen_depth = None 
         if self.drag and ui.drag_node: 
             for edge in ui.drag_node.edges: 
                 current_edge = edge 
@@ -356,6 +402,7 @@ class Canvas(QWidget):
                 dif = ui.drag_node.pos - pos
                 dist = math.sqrt(dif.x()**2 + dif.y()**2)
                 depth = int(2*dist/current_edge.min_dist)
+                gen_depth = depth 
                 
                 for i in range(depth): 
                     current_node.lock()
@@ -364,26 +411,54 @@ class Canvas(QWidget):
                     # print(edge.port_at(neighbour), closer_port)
                     if closer_port != current_edge.port_at(neighbour): 
                         neighbour.assign_both_ends( current_edge, closer_port )
-                        network_change = f'drag - Reassign at "{current_node.label}" - "{neighbour.label}" to port {closer_port}'
+                        network_change = f'drag - Reassign at "{current_node.label}" - "{neighbour.label}" to port {closer_port}' 
                     current_node = neighbour
-                    # otherwise it will try to acces one degree nodes 
+                    # otherwise it will try to acces one degree nodes or mu
                     if len(current_node.edges) != 2: 
                         break 
                     current_edge = current_node.edges[1] if current_edge == current_node.edges[0] else current_node.edges[0]
         
+        if self.drag and self.drag_group and ui.drag_node is None and ui.drag_label is None: 
+            if type(self.group[-1]) == list: 
+                outside_v: Node = self.group[-1][0]
+                outside_e: Edge = self.group[-1][1]
+                group = self.group[:-1]
+
+                closer_port = outside_v.check_for_closer_port(pos)
+                if closer_port != outside_e.port_at(outside_v): 
+                    cc_wise = 1 if closer_port > outside_e.port_at(outside_v) else -1
+                    for v in group: 
+                        v.lock()
+                        for e in v.edges: 
+                            if e.other(v) in group: 
+                                v.assign( e, (e.port_at(v) + cc_wise) % 8)
+                    outside_v.assign_both_ends(outside_e, (outside_e.port_at(outside_v) + cc_wise) % 8)
+                    network_change = 'pivot right' if closer_port > outside_e.port_at(outside_v) else 'pivot left'
+                    # self.group = []
+                    # self.drag_group = False 
+                    # self.lasso_path = QPolygonF()
+
         # Lasso select 
-        if self.drag and ui.drag_node is None and ui.drag_label is None: 
-            self.lasso_path.append(pos)
+        if self.drag and ui.drag_node is None and ui.drag_label is None and not self.drag_group: 
+            if self.drag_group == False: 
+                self.lasso_path.append(pos)
+
 
         ### Did we do anything? Then solve and render as appropriate, and to undo buffer
         if network_change is not None:
             if self.auto_update.isChecked():
+                # this is for calculating the new mouse placement after a shift happened while dragging. 
                 resolve_shift = layout_lp(self.network, self.label_dist, ui.hover_node)
-                print(resolve_shift)
-                if resolve_shift:
-                    if network_change[0:4] == 'drag' and ui.drag_node and len(ui.drag_node.edges) >= 2: 
+                if resolve_shift and not self.drag_group:
+                    if network_change[0:4] == 'drag' and ui.drag_node: 
                         # we translate to the node that we were dragging 
-                        self.view.translate(pos.x() - ui.drag_node.pos.x(), pos.y() - ui.drag_node.pos.y())
+                        if len(ui.drag_node.edges) == 1: 
+                            neighbour = ui.drag_node.edges[0].other(ui.drag_node)
+                            opposite_port = ui.drag_node.edges[0].port_at(neighbour)
+                            shift = ui.drag_node.pos + ((gen_depth - 1) * min_edge_scale) * port_offset[opposite_port]
+                            self.view.translate(pos.x() - shift.x(), pos.y() - shift.y())
+                        else: 
+                            self.view.translate(pos.x() - ui.drag_node.pos.x(), pos.y() - ui.drag_node.pos.y())
                     else: 
                         self.view.translate(-resolve_shift.x(), -resolve_shift.y())
                     self.network.set_background_image()
@@ -391,6 +466,7 @@ class Canvas(QWidget):
                         export_loom(self.network,self.filedata)
                         render_loom( "render.json", "render.svg" )
                 elif resolve_shift is False:
+                    print('no shift')
                     m = QMessageBox()
                     m.setText("Failed to realise layout.")
                     m.setIcon(QMessageBox.Warning)

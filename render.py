@@ -1,4 +1,4 @@
-from PySide6.QtGui import QColor, QPainterPath, QPen, QFont, QPainter, QPolygonF
+from PySide6.QtGui import QColor, QPainterPath, QPen, QFont, QPainter, QPolygonF, QBrush
 from PySide6.QtCore import Qt
 
 from elements.network import *
@@ -145,7 +145,6 @@ def render_network( painter: QPainter, net: Network, show_background: bool, labe
                 painter.setPen(QPen(QColor('black'),20))
                 painter.setFont(QFont("Arial", 15))
                 painter.drawText(v.pos + QPointF(-v.label_node.text_width/2, vert_dist_text), v.label)
-
     
     # Draw UI for the node close to the mouse
     if ui.hover_node:
@@ -164,6 +163,29 @@ def render_lasso(painter: QPainter, points: QPolygonF):
     ui.lasso_pen.setStyle(Qt.DashLine)
     painter.setPen(ui.lasso_pen)
     painter.drawPolyline(points)
+
+def render_group(painter: QPainter, points: QPolygonF, group: list[Node]): 
+    if len(group) > 0: 
+        ui.lasso_pen.setStyle(Qt.SolidLine)
+        painter.setBrush(QBrush(QColor(0,0,0,20)))
+        painter.setPen(ui.lasso_pen)
+        painter.drawPolygon(points)
+
+def render_concentric_circles(painter: QPainter): 
+    #For displaying concentric circles 
+    if ui.drag_node and len(ui.drag_node.edges) == 1:
+        radius = ui.drag_node.edges[0].min_dist / 2
+        
+        for i in range(8, 0, -1): 
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QBrush(QColor(0,0,0,5 * i)))
+            painter.drawEllipse(ui.drag_node.pos, radius * i, radius * i)
+
+            painter.setPen(QPen( QColor('white'), 3 ))
+            painter.drawText(ui.drag_node.pos + ((radius * (i-0.5)) * port_offset[5]) + QPointF(-10, 0), str(i))
+
+        painter.setPen(QPen( QColor('white'), 3 ))
+        painter.drawLine(ui.drag_node.pos, ui.drag_node.pos + (radius * 8 * port_offset[5]))
 
 
 def handle_position( v: Node, p: int ):

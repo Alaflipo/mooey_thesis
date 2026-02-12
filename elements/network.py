@@ -123,9 +123,6 @@ class Network:
         return False 
     
     def overlaps_with_label(self, rect: QPolygonF): 
-        if self.edges_overlaps_label(rect): 
-            print('overlap edge')
-        # print(f'edges {self.edges_overlaps_label(rect)}')
         return self.edges_overlaps_label(rect) or self.labels_overlaps_label(rect)
 
     def find_degree_2_lines(self): 

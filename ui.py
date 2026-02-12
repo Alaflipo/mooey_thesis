@@ -9,8 +9,8 @@ hover_edge: Edge | None = None
 hover_empty_port: int | None = None
 hover_label: Label | None = None 
 
-drag_node = None 
-drag_label = None 
+drag_node: Node | None = None 
+drag_label: Label | None = None 
 
 selected_node = None
 selected_edge = None

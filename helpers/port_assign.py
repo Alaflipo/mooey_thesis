@@ -247,6 +247,7 @@ def post_fix_overlap_ilp(net: Network, label_dist, label_hor_strength):
     
     # make sure that overlaps don't have the same port 
     for overlap in overlaps: 
+        # they can't both stay the same 
         if len(overlap) == 2: 
             v1 = overlap[0]
             v2 = overlap[1]
@@ -258,6 +259,16 @@ def post_fix_overlap_ilp(net: Network, label_dist, label_hor_strength):
             penalty = solver.BoolVar(f'edge_overlap_{v.name}_{free_ports[i]}')
             objective += 10 * penalty
             solver.Add( penalty >= portvars_labels[v][len(portvars_labels[v]) - 1])
+        
+        # We also add a penalty if the newly chosen spot will also be an overlap
+        for v in overlap: 
+            for i, port in enumerate(v.get_free_ports()): 
+                rect = v.label_node.get_rectangle_port(port, label_dist)
+                if net.overlaps_with_label(rect): 
+                    print(f'new_overlap_{v.label}_{port}')
+                    penalty = solver.BoolVar(f'new_overlap_{v.name}_{port}')
+                    objective += 10 * penalty
+                    solver.Add( penalty >= portvars_labels[v][i])
     
     ##### NOTE: For each vertex in which there is currently overlap with either edge or other label need to compare every configuration that is possible between them all.  ###
 
