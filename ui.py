@@ -7,13 +7,17 @@ from elements.network import Node, Edge, Label
 hover_node: Node | None = None
 hover_edge: Edge | None = None
 hover_empty_port: int | None = None
+hover_port: int | None = None 
 hover_label: Label | None = None 
 
 drag_node: Node | None = None 
 drag_label: Label | None = None 
+drag_port: int | None = None 
 
 selected_node = None
 selected_edge = None
+
+edge_from = None 
 
 
 selected_label_node = None 
@@ -38,11 +42,14 @@ highlight_brush = QBrush( QColor('orange'))
 selected_brush = QBrush( QColor('yellow'))
 active_handle_pen = QPen( QColor('black'), 2 )
 
+active_pen = QPen( QColor('red'), 5)
+active_brush = QBrush( QColor('lightgreen'))
+
 lasso_pen = QPen(QColor('lightgray'), 3)
 
 # Parameters for UI geometry
 
-hover_node_radius = 60
+hover_node_radius = 40
 bezier_radius = 20
 bezier_cp = 60
 rose_radius = 20

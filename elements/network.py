@@ -25,7 +25,8 @@ port_offset = [ QPointF(-1,0)
               ]
 
 class Network:
-    def __init__(self):
+    def __init__(self, file_path = 'test.json'):
+        self.file_path = file_path
         self.nodes: dict[str, Node] = {}
         self.edges: list[Edge] = []
         self.metro_lines: dict[str, list[Edge]] = []
@@ -36,17 +37,21 @@ class Network:
 
         self.geo_min_max = (0, 0, 0, 0)
 
+        self.deg_2_lines: list[list[str]] = []
+
     def clone(self):
         other = Network()
         other.midpoint = self.midpoint
         other.layout_set = self.layout_set
         other.geo_min_max = self.geo_min_max
-        node_clones = dict()
+        other.deg_2_lines = self.deg_2_lines
+        node_clones: dict[str, Node] = dict()
         for k,v in self.nodes.items():
             other_v = v.clone(v.pos.x(), v.pos.y(), v.name, v.label)
             other_label = v.label_node.clone(other_v, v.label)
             other_v.label_node = other_label
-            if other_label.port is not None: other_v.ports[other_label.port] = other_label
+            if other_label.port is not None: 
+                other_v.ports[other_label.port] = other_label
             node_clones[v] = other_v
             other.nodes[k] = other_v
         edge_clones = dict()
@@ -62,8 +67,11 @@ class Network:
             other.edges.append( other_e )
             other_e.bend = e.bend
             other_e.port = e.port[:] # new copy of list
-        for v in self.nodes.values():
-            node_clones[v].ports = [ edge_clones.get(e,None) for e in v.ports ]
+
+            # add edge to port list in node 
+            if e.port[0] is not None: a.ports[e.port[0]] = other_e
+            if e.port[1] is not None: b.ports[e.port[1]] = other_e
+
         return other
 
     def scale_by_shortest_edge( self, lb ):
@@ -92,9 +100,9 @@ class Network:
         self.midpoint = midpoint([node.geo_pos for node in self.nodes.values()])
 
         for line in self.deg_2_lines: 
-            midpoint_line: QPointF = midpoint([node.geo_pos for node in line])
-            for v in line: 
-                v.left_line = midpoint_line.x() <= self.midpoint.x()
+            midpoint_line: QPointF = midpoint([self.nodes[node_name].geo_pos for node_name in line])
+            for node_name in line: 
+                self.nodes[node_name].left_line = midpoint_line.x() <= self.midpoint.x()
 
     # returns either two label vertices that overlap or one vertex that overlaps with an edge
     def check_label_overlaps(self): 
@@ -126,7 +134,7 @@ class Network:
         return self.edges_overlaps_label(rect) or self.labels_overlaps_label(rect)
 
     def find_degree_2_lines(self): 
-        self.deg_2_lines: list[list[Node]] = []
+        self.deg_2_lines: list[list[str]] = []
         seen: dict = dict()
         for name, v in self.nodes.items(): 
             if name in seen: continue
@@ -136,7 +144,7 @@ class Network:
 
                 path1 = spacewalk( v.edges[0].other(v), v, seen )
                 path2 = spacewalk( v.edges[1].other(v), v, seen )
-                walk: list[Node] = path1 + [v] + [v for v in reversed(path2)]
+                walk: list[Node] = [node.name for node in path1] + [v.name] + [v.name for v in reversed(path2)]
                 self.deg_2_lines.append(walk)
             else: # We skip degree 1 and > 2 because they will be taken into account with one of the walks 
                 continue 
@@ -179,7 +187,7 @@ class Node:
         self.label_node: Label = Label(self, label) 
 
         self.edges: list[Edge] = []
-        self.ports = [None]*8
+        self.ports: list[Edge | None | Label] = [None]*8
 
         self.left_line: bool = True 
 
@@ -196,6 +204,7 @@ class Node:
 
     def lock(self): 
         self.locked = True 
+        
     def unlock(self): 
         self.locked = False 
 
@@ -395,7 +404,7 @@ class Edge:
     def __init__(self, a, b):
         self.v: list[Node] = [a,b]
         self.port: list[None | int] = [None,None]
-        self.bend = None
+        self.bend: None | QPointF = None
         self.color: str = '000000'
         self.line_id: str = ''
 
@@ -455,6 +464,17 @@ class Edge:
     
     def consistent_ports(self):
         return self.port[0]==opposite_port(self.port[1])
+    
+    def give_parralel_line(self, offset): 
+        normal = self.normal()
+
+        new_p0 = self.v[0].pos + offset * normal
+        new_p1 = self.v[1].pos + offset * normal
+
+        return (new_p0, new_p1)
+    
+    def give_point_offset(self, point, offset): 
+        return point + offset * self.normal()
 
 def round_angle_to_port(angle):
     return int(((angle+pi/8)%(2*pi))/(pi/4))
@@ -467,7 +487,7 @@ def midpoint(points: list[QPointF]):
         sum_y += v.y()
     return QPointF(sum_x / len(points), sum_y / len(points))
 
-def spacewalk( v: Node, prev, seen ):
+def spacewalk( v: Node, prev, seen ) -> list[Node]:
     seen[v.name] = True
     walk = []
     if v.is_deg2():

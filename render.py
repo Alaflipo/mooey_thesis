@@ -32,15 +32,15 @@ def render_network( painter: QPainter, net: Network, show_background: bool, labe
     # Coordinate system axes
     painter.setPen(QPen(QColor('lightgray'),10))
     painter.setFont(font)
-    painter.drawLine( 0, 0, 100, 0 )
-    painter.drawText( 130, 10, "x" )
-    painter.drawLine( 0, 0, 0, 100 )
-    painter.drawText( 1, 150, "y" )
+    # painter.drawLine( 0, 0, 100, 0 )
+    # painter.drawText( 130, 10, "x" )
+    # painter.drawLine( 0, 0, 0, 100 )
+    # painter.drawText( 1, 150, "y" )
 
     # render background 
     if show_background: 
         for e in net.edges: 
-            color = QColor('#'+e.color)
+            color = QColor('#'+e.color[0])
             color.setAlpha(20) 
             ui.edge_pen.setColor(color)
             painter.setPen( ui.edge_pen )
@@ -55,42 +55,57 @@ def render_network( painter: QPainter, net: Network, show_background: bool, labe
 
     # Draw the edges
     for e in net.edges:
-        ui.edge_pen.setColor(QColor('#'+e.color))
-        painter.setPen( ui.edge_pen )
+        center_index = (len(e.color) - 1) / 2
+        spacing = 4
+        for i in range(len(e.color)): 
 
-        painter.setBrush(Qt.NoBrush )
+            offset = (i - center_index) * spacing
+            a_start, b_start = e.give_parralel_line(offset)
 
-        a_start = e.v[0].pos
-        if e.free_at(e.v[0]):
-            if e.v[0]==ui.hover_node: a_1 = free_edge_handle_position(e.v[0],e)
-            else: a_1 = e.v[0].pos + (ui.bezier_radius*e.direction(e.v[0])).toPointF()
-            a_2 = e.v[0].pos + (ui.bezier_cp*e.direction(e.v[0])).toPointF()
-        else:    
-            a_1 = e.v[0].pos + ui.bezier_radius*port_offset[e.port[0]]
-            a_2 = e.v[0].pos + ui.bezier_cp*port_offset[e.port[0]]
+            ui.edge_pen.setColor(QColor('#'+e.color[i]))
+            painter.setPen( ui.edge_pen )
 
-        b_start = e.v[1].pos
-        if e.free_at(e.v[1]):
-            if e.v[1]==ui.hover_node: b_1 = free_edge_handle_position(e.v[1],e)
-            else: b_1 = e.v[1].pos + (ui.bezier_radius*e.direction(e.v[1])).toPointF()
-            b_2 = e.v[1].pos + (ui.bezier_cp*e.direction(e.v[1])).toPointF()
-        else:    
-            b_1 = e.v[1].pos + ui.bezier_radius*port_offset[e.port[1]]
-            b_2 = e.v[1].pos + ui.bezier_cp*port_offset[e.port[1]]
+            painter.setBrush(Qt.NoBrush )
 
-        path = QPainterPath()
-        if e.free_at(e.v[0]):
-            path.moveTo( a_1 )
-        else:
-            path.moveTo( a_start )
-            path.lineTo( a_1 )
-        if e.bend is None: path.cubicTo( a_2, b_2, b_1 )
-        else:
-            path.lineTo( e.bend )
-            path.lineTo( b_1 )
-        if not e.free_at(e.v[1]):
-            path.lineTo( b_start)
-        painter.drawPath(path)
+            # a_start = e.v[0].pos
+            if e.free_at(e.v[0]):
+                if e.v[0]==ui.hover_node: 
+                    a_1 = free_edge_handle_position(e.v[0],e)
+                else: 
+                    a_1 = a_start + (ui.bezier_radius*e.direction(e.v[0])).toPointF()
+                    a_2 = a_start + (ui.bezier_cp*e.direction(e.v[0])).toPointF()
+            else:    
+                a_1 = a_start + ui.bezier_radius*port_offset[e.port[0]]
+                a_2 = a_start + ui.bezier_cp*port_offset[e.port[0]]
+
+            # b_start = e.v[1].pos
+            if e.free_at(e.v[1]):
+                if e.v[1]==ui.hover_node: 
+                    b_1 = free_edge_handle_position(e.v[1],e)
+                else: 
+                    b_1 = b_start + (ui.bezier_radius*e.direction(e.v[1])).toPointF()
+                    b_2 = b_start + (ui.bezier_cp*e.direction(e.v[1])).toPointF()
+            else:    
+                b_1 = b_start + ui.bezier_radius*port_offset[e.port[1]]
+                b_2 = b_start + ui.bezier_cp*port_offset[e.port[1]]
+
+            path = QPainterPath()
+
+            if e.free_at(e.v[0]):
+                path.moveTo( a_1 )
+            else:
+                path.moveTo( a_start )
+                path.lineTo( a_1 )
+            
+            if e.bend is None: 
+                path.cubicTo( a_2, b_2, b_1 )
+            else:
+                path.lineTo( e.give_point_offset(e.bend, offset) )
+                path.lineTo( b_1 )
+            
+            if not e.free_at(e.v[1]):
+                path.lineTo( b_start)
+            painter.drawPath(path)
 
     # for indicator lines (should be done earlier because that looks prettier)
     if ui.hover_node: 
@@ -120,12 +135,14 @@ def render_network( painter: QPainter, net: Network, show_background: bool, labe
         painter.setBrush(ui.node_brush)
         painter.drawEllipse(v.pos, 10, 10)
 
-        if not ui.drag_node or ui.hover_node: 
+        if (not ui.drag_node or ui.hover_node) and v.label_node.label_text != "": 
             if not v.label_node.center_label: 
                 # Draw bouding box label
-                painter.setPen(QPen(QColor('lightgray'),20))
+                painter.setPen(QPen(QColor('lightgray'),5))
+                painter.setBrush(ui.rose_used_brush)
                 if net.layout_set: 
-                    painter.drawLine(v.label_node.head, v.label_node.end) 
+                    # painter.drawLine(v.label_node.head, v.label_node.end) 
+                    painter.drawPolygon(v.label_node.rectangle_points)
 
                 # Draw text in bounding box  
                 painter.setPen(QPen(QColor('black'),20))
@@ -140,7 +157,8 @@ def render_network( painter: QPainter, net: Network, show_background: bool, labe
                 vert_dist = label_dist if v.label_node.port == 2 else -label_dist
                 vert_dist_text = vert_dist + 5 if v.label_node.port == 2 else vert_dist + 5
                 painter.setPen(QPen(QColor('lightgray'),20))
-                painter.drawLine(v.pos + QPointF(-v.label_node.text_width/2, vert_dist), v.pos + QPointF(v.label_node.text_width/2, vert_dist))
+                if net.layout_set: 
+                    painter.drawLine(v.pos + QPointF(-v.label_node.text_width/2, vert_dist), v.pos + QPointF(v.label_node.text_width/2, vert_dist))
                 
                 painter.setPen(QPen(QColor('black'),20))
                 painter.setFont(QFont("Arial", 15))
@@ -157,12 +175,17 @@ def render_network( painter: QPainter, net: Network, show_background: bool, labe
                 if e==ui.hover_edge: painter.setBrush( ui.highlight_brush )
                 handle_pos = free_edge_handle_position(ui.hover_node, e)
                 painter.drawEllipse(handle_pos,ui.handle_radius,ui.handle_radius)
-                
 
 def render_lasso(painter: QPainter, points: QPolygonF): 
     ui.lasso_pen.setStyle(Qt.DashLine)
     painter.setPen(ui.lasso_pen)
     painter.drawPolyline(points)
+
+def render_highlighted_nodes(painter: QPainter, nodes: list[Node]): 
+    painter.setPen(ui.active_pen)
+    painter.setBrush(ui.active_brush)
+    for node in nodes: 
+        painter.drawEllipse(node.pos, 10, 10)
 
 def render_group(painter: QPainter, points: QPolygonF, group: list[Node]): 
     if len(group) > 0: 

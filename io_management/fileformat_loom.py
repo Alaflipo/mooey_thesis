@@ -5,7 +5,7 @@ from elements.network import Network, Node, Edge
 from PySide6.QtCore import QPointF
 
 def read_network_from_loom(filename):
-    network = Network()
+    network = Network(file_path=filename)
     with open(filename) as fp:
         edge_staging = [] # don't resolve edges until we have all the nodes
         data = json.load(fp)
@@ -25,10 +25,11 @@ def read_network_from_loom(filename):
                 s = prop['from']
                 t = prop['to']
                 id = prop['lines'][0]['id']
-                if len(prop['lines'])==1:
-                    color = prop['lines'][0]['color']
-                else:
-                    color = '000000'
+                color = [prop['lines'][i]['color'] for i in range(len(prop['lines']))]
+                # if len(prop['lines'])==1:
+                #     color = prop['lines'][0]['color']
+                # else:
+                #     color = '000000'
                 edge_staging.append( (s,t,color,id) )
         
         # first_node = list(network.nodes.values())[0]
@@ -72,9 +73,18 @@ def example_network():
     network.edges.append(add_edge(network.nodes['test5'], network.nodes['test4']))
     return network
 
+def empty_network(): 
+    network = Network()
+    nodes = [Node( 5, -2, 'Middle', 'Middle' ), Node( 3, -4, 'Paroni', 'Paroni' )]
+    for node in nodes: 
+        network.nodes[node.name] = node 
+    edge = add_edge(nodes[0], nodes[1])
+    network.edges.append(edge)
+    return network
+
 def add_edge(s,t):
     e = Edge(s,t)
-    
+
     s.edges.append(e)
     t.edges.append(e)
     return e

@@ -97,11 +97,6 @@ def layout_lp( net: Network, label_dist:int = 20, stable_node:Node = None ):
             del(v.xvar)
             del(v.yvar)
 
-        # for v1 in net.nodes.values(): 
-        #     for v2 in net.nodes.values(): 
-        #         if v1.label_node.overlaps(v2.label_node): 
-        #             print(f'{v1.label} overlaps with {v2.label}')
-
         for e in net.edges:
             if e.bend is not None:
                 # Bend was a Node for solving; reduce it to a point

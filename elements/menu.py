@@ -4,6 +4,8 @@ from PySide6.QtCore import QPointF
 
 import datetime
 
+import pickle
+
 from elements.canvas import Canvas
 from elements.bend_dialog import BendPenaltyDialog
 
@@ -97,6 +99,7 @@ class MainWindow(QMainWindow):
 
         # general slider
         self.add_slider(layout, "Label distance", 0, 50, 25, slider_set=0)
+        self.add_slider(layout, "Min edge distance", 0, 150, 100, slider_set=0)
 
         add_sidebar_button(layout, "Update layout", lambda: self.do_layout())
         self.canvas.auto_update = QCheckBox("Auto-update")
@@ -153,9 +156,14 @@ class MainWindow(QMainWindow):
         self.slider_values[slider_set][slider] = value * tick_size
 
         # For the label distance, needs to be set in canvas also
-        if (slider_set==0 and slider==0): 
-            self.canvas.label_dist = value * tick_size
-            self.do_layout()
+        if slider_set==0: 
+            if slider==0: 
+                self.canvas.label_dist = value * tick_size
+                self.do_layout()
+            if slider==1: 
+                for edge in self.canvas.network.edges: 
+                    edge.min_dist = value * tick_size
+                self.do_layout()
         elif self.auto_update_port.isChecked(): 
             self.do_port_assign()
     
@@ -223,7 +231,7 @@ class MainWindow(QMainWindow):
         self.canvas.render()
 
     def do_fix_label_overlap(self): 
-        port_assign.post_fix_overlap_ilp(self.canvas.network, self.slider_values[0][0], self.slider_values[2][0])
+        port_assign.post_fix_overlap_ilp_new(self.canvas.network, self.slider_values[0][0], self.slider_values[2][0])
 
         ##### Brute force solution ######
         # overlaps = self.canvas.network.check_label_overlaps()
@@ -263,6 +271,12 @@ class MainWindow(QMainWindow):
         open_action.setShortcut(QKeySequence('Ctrl+O'))
         open_action.triggered.connect(self.canvas.open_dialog)
         file_menu.addAction(open_action)
+        save_action = QAction("Save....", self)
+        save_action.triggered.connect(self.canvas.save_file)
+        file_menu.addAction(save_action)
+        picture_action = QAction("Take picture", self)
+        picture_action.triggered.connect(self.canvas.create_image)
+        file_menu.addAction(picture_action)
         exit_action = QAction("Exit", self)
         exit_action.setShortcut(QKeySequence('Ctrl+Q'))
         file_menu.addAction(exit_action)
@@ -278,6 +292,8 @@ class MainWindow(QMainWindow):
         edit_menu.addAction(self.canvas.redo_action)
         self.canvas.redo_action.setShortcut(QKeySequence('Ctrl+Shift+Z'))
         self.canvas.redo_action.triggered.connect(self.canvas.redo)
+
+
 
 def add_sidebar_button(layout, text, action):
     button = QPushButton(text)
