@@ -1,6 +1,6 @@
-from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QFrame, QLabel, QCheckBox, QMessageBox, QDialog, QSlider, QComboBox
-from PySide6.QtGui import Qt, QAction, QKeySequence, QPolygonF
-from PySide6.QtCore import QPointF
+from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QFrame, QLabel, QCheckBox, QMessageBox, QDialog, QSlider, QComboBox, QButtonGroup, QScrollArea
+from PySide6.QtGui import Qt, QAction, QKeySequence, QPolygonF, QIcon
+from PySide6.QtCore import QPointF, QSize
 
 import datetime
 
@@ -20,25 +20,47 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Mooey")
         self.setMinimumSize(1280, 720)
 
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
-        layout = QHBoxLayout(central_widget)
+        central = QWidget()
+        self.setCentralWidget(central)
 
+        root = QHBoxLayout(central)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
+
+        # --- Left scrollable menu ---
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll.setMinimumWidth(180)
+        scroll.setMaximumWidth(220)
+
+        sidebar = QWidget()
         button_layout = QVBoxLayout()
-        button_layout.setAlignment(Qt.AlignTop)
-        layout.addLayout(button_layout)
+        sidebar.setFixedWidth(200)
+
+        sidebar.setAttribute(Qt.WA_StyledBackground, True)
+        sidebar.setAutoFillBackground(True)
         
+        sidebar.setLayout(button_layout)
+        scroll.setWidget(sidebar)
+
+        # --- Right canvas ---
         self.canvas = Canvas()
+
+        root.addWidget(scroll)
+        root.addWidget(self.canvas) 
 
         self.methods = ["Rounding", "Matching", "Global"]
         self.method_choice: int = 1 
         self.sliders = [[], [], [], []]
         self.slider_values = [[], [], [], []]
-        
+
+        self.selection_modes = [("Rectangle", "square_select.png"), ("Lasso", "lasso_select.svg"), ("Brush", "brush_select.png")]
+        self.selection_buttons = {}
+
         self.construct_sidebar(button_layout)
         self.construct_menubar()
-        
-        layout.addWidget(self.canvas)
 
         # TODO: add history stuff 
         self.canvas.history_checkpoint( "Initial drawing" )
@@ -58,6 +80,40 @@ class MainWindow(QMainWindow):
         self.canvas.show_background.setChecked(False)
         self.canvas.show_background.clicked.connect(lambda: self.canvas.render())
         layout.addWidget(self.canvas.show_background)
+
+        add_group_separator(layout)
+        layout.addWidget(QLabel("Selection method"))
+
+        button_row = QHBoxLayout()
+        button_row.setSpacing(6)
+        layout.addLayout(button_row)
+
+        self.hor_buttons = QButtonGroup(self)
+        self.hor_buttons.setExclusive(True)
+
+        for i, (mode, path) in enumerate(self.selection_modes):
+            button = QPushButton(mode)
+            button.setCheckable(True)
+            button.setFixedSize(48, 48)
+            button.setIcon(QIcon(f'assets/{path}'))
+            button.setIconSize(QSize(28, 28))
+            button.setText('')
+            button.setProperty("mode", mode)
+            button.setToolTip(mode)
+            # set first button checked 
+            if i == 1: button.setChecked(True)
+
+            self.hor_buttons.addButton(button)
+            button_row.addWidget(button)
+
+        self.hor_buttons.buttonClicked.connect(self.selection_mode_changed)
+
+        self.combo = QComboBox()
+        self.combo.addItems(self.canvas.network.lines.keys())
+        print(self.canvas.network.lines)
+        # self.combo.setCurrentIndex(self.method_choice)
+        layout.addWidget(self.combo)
+        self.combo.currentIndexChanged.connect(self.selection_line_changed)
 
         # Buttons to control port assignment methods 
         add_group_separator(layout)
@@ -121,6 +177,9 @@ class MainWindow(QMainWindow):
 
         self.dropdown_changed(self.method_choice)
     
+    def selection_mode_changed(self, button: QPushButton):
+        self.canvas.selection_mode = [mode[0] for mode in self.selection_modes].index(button.property("mode"))
+    
     def dropdown_changed(self, index: int):
         # We add one because the first slider set is for general sliders 
         self.method_choice = index + 1
@@ -133,6 +192,21 @@ class MainWindow(QMainWindow):
         for (label, slider) in self.sliders[self.method_choice]: 
             label.show()
             slider.show()
+
+    def selection_line_changed(self, index: int): 
+         # disable all the buttons 
+        self.hor_buttons.setExclusive(False)
+        for button in self.hor_buttons.buttons():
+            button.setChecked(False)
+        self.hor_buttons.setExclusive(True)
+
+        lines = self.canvas.network.lines
+        color = list(lines.keys())[index]
+        self.canvas.color_selected = color
+        self.canvas.selection_mode = 3 
+
+        self.canvas.handle_line_select(color)
+        print(f'Line with color {color} chosen', lines[color])
 
     def add_slider(self, layout, text, min, max, value, slider_set, tick_size=1): 
         label = QLabel(text)

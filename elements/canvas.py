@@ -1,8 +1,8 @@
 import math
 
 from PySide6.QtWidgets import QWidget, QSizePolicy, QMenu, QMessageBox, QFileDialog
-from PySide6.QtGui import QPainter, QPixmap, QColor, Qt, QTransform, QVector2D, QPolygonF, QImage
-from PySide6.QtCore import QPointF, QEvent, QSize
+from PySide6.QtGui import QPainter, QPixmap, QColor, Qt, QTransform, QVector2D, QPolygonF, QImage, QPainterPath
+from PySide6.QtCore import QPointF, QEvent, QSize, QRectF
 
 from io_management.fileformat_loom import read_network_from_loom, export_loom, render_loom, example_network, add_edge, empty_network
 from io_management.fileformat_graphml import read_network_from_graphml
@@ -12,6 +12,7 @@ from helpers.layout import layout_lp
 from helpers.port_assign import assign_by_local_matching
 
 from elements.network import Label, Node, Edge, Network
+from elements.group import Group
 
 import random
 import pickle
@@ -60,13 +61,27 @@ class Canvas(QWidget):
         self.network.find_degree_2_lines()
         self.network.calculate_mid_point()
         self.network.find_min_max_geo()
+        self.network.divide_in_lines()
 
         self.label_dist:int = 25
-        
-        self.lasso_path: QPolygonF = QPolygonF()
-        self.group: list[Node] = []
-        self.drag_group: bool = False
+
         self.affected_nodes: list[Node] = []
+        
+        self.selection_path: QPolygonF = QPolygonF()
+        self.brush: QPainterPath = QPainterPath()
+        self.group: Group | None = None
+
+        self.drag_group: bool = False
+        self.move_group: bool = False 
+        self.expand_group: bool = False 
+        self.lock_group: bool = False 
+        self.label_group: bool = False 
+        self.pivot_group: int | None = None 
+        
+
+        # 0 = square, 1 = lasso, 2 = brush, 3 = line 
+        self.selection_mode: int = 1
+        self.color_selected: None | str = None 
         
     def render(self):
         #self.network.clone()
@@ -82,9 +97,14 @@ class Canvas(QWidget):
         self.pixmap.fill( QColor('white') )
         ui.update_params( view.m11() ) # element [1,1] of the view matrix is scale in our case
         
-        render.render_network(painter, self.network, self.show_background.isChecked(), self.label_dist )
-        render.render_lasso(painter, self.lasso_path)
-        render.render_group(painter, self.lasso_path, self.group)
+        render.render_network(painter, self.network, self.show_background.isChecked(), self.label_dist, self.group)
+        
+        if self.group: 
+            render.render_group(painter, self.group, self.move_group, self.pivot_group)
+        else: 
+            if self.selection_mode == 0: render.render_rectangle_select(painter, self.selection_path)
+            elif self.selection_mode == 1: render.render_lasso(painter, self.selection_path)
+            elif self.selection_mode == 2: render.render_brush(painter, self.selection_path, self.brush)
 
         # render.render_concentric_circles(painter)
         render.render_highlighted_nodes(painter, self.affected_nodes)
@@ -175,16 +195,20 @@ class Canvas(QWidget):
         if press and event.buttons() == Qt.LeftButton and event.modifiers() == Qt.ShiftModifier: 
             self.handle_modifier_click()
         
-        # Dragging of labels 
+        ##### Handle everything when in drag mode #####
         if self.drag: 
-            if ui.drag_label: 
-                self.label_dragging()
-            elif ui.drag_node: 
-                self.node_dragging() 
-            elif self.drag_group: 
+            if self.drag_group: 
+                # when a group is selected using the lasso tool, we can drag the group
                 self.group_dragging()
+            elif ui.drag_label and not self.drag_group: 
+                # for single label dragging 
+                self.label_dragging()
+            elif ui.drag_node and not self.drag_group: 
+                # for either individual node dragging or dragging a leg 
+                self.node_dragging() 
             else: 
-                self.lasso_select_dragging()
+                # when nothing is selected to be dragged we activate the select tool
+                self.select_dragging()
         
         # For increasing edge length by port dragging ?????
         # if self.drag and ui.drag_port != None: 
@@ -207,30 +231,60 @@ class Canvas(QWidget):
             if self.auto_update.isChecked():
                 # this is for calculating the new mouse placement after a shift happened while dragging. 
                 resolve_shift = layout_lp(self.network, self.label_dist, ui.hover_node)
-                if resolve_shift and not self.drag_group:
-                    if self.network_change[0:4] == 'drag' and ui.drag_node: 
-                        # we translate to the node that we were dragging 
-                        if len(ui.drag_node.edges) == 1: 
-                            neighbour = ui.drag_node.edges[0].other(ui.drag_node)
-                            opposite_port = ui.drag_node.edges[0].port_at(neighbour)
-                            how_far = 2
-                            shift = ui.drag_node.pos + (how_far * min_edge_scale) * port_offset[opposite_port]
-                            self.view.translate(self.mouse_pos.x() - shift.x(), self.mouse_pos.y() - shift.y())
-                        else: 
-                            self.view.translate(self.mouse_pos.x() - ui.drag_node.pos.x(), self.mouse_pos.y() - ui.drag_node.pos.y())
-                    else: 
-                        self.view.translate(-resolve_shift.x(), -resolve_shift.y())
-                    self.network.set_background_image()
-                    if self.auto_render.isChecked():
-                        export_loom(self.network,self.filedata)
-                        render_loom( "render.json", "render.svg" )
-                elif resolve_shift is False:
+
+                if self.group: 
+                    self.group.update_border()
+                    self.group.determine_pivot_buttons()
+
+                    #### Do we want to move with the button??? 
+                    # if self.group and self.pivot_group != None: 
+                    #     con_button = self.group.con_buttons_pos[self.pivot_group]
+                    #     self.view.translate(self.mouse_pos.x() - con_button.x(), self.mouse_pos.y() - con_button.y())
+
+                # we only translate when we have no dragging, results in more intuitive interaction
+                if resolve_shift and not self.drag: 
+                    self.view.translate(-resolve_shift.x(), -resolve_shift.y())
+
+                if resolve_shift is False:
                     print('no shift')
                     m = QMessageBox()
                     m.setText("Failed to realise layout.")
                     m.setIcon(QMessageBox.Warning)
                     m.setStandardButtons(QMessageBox.Ok)
                     m.exec()
+                else: 
+                    if self.auto_render.isChecked():
+                        export_loom(self.network,self.filedata)
+                        render_loom( "render.json", "render.svg" )
+                    if self.show_background.isChecked(): 
+                        self.network.set_background_image()
+                
+                # if resolve_shift and not self.drag_group:
+                #     if self.network_change[0:4] == 'drag' and ui.drag_node: 
+                #         print('drag')
+                #         # we translate to the node that we were dragging 
+                #         if len(ui.drag_node.edges) == 1: 
+                #             neighbour = ui.drag_node.edges[0].other(ui.drag_node)
+                #             opposite_port = ui.drag_node.edges[0].port_at(neighbour)
+                #             how_far = 2
+                #             shift = ui.drag_node.pos + (how_far * min_edge_scale) * port_offset[opposite_port]
+                #             self.view.translate(self.mouse_pos.x() - shift.x(), self.mouse_pos.y() - shift.y())
+                #         else: 
+                #             self.view.translate(self.mouse_pos.x() - ui.drag_node.pos.x(), self.mouse_pos.y() - ui.drag_node.pos.y())
+                #     else: 
+                #         print('no drag?')
+                #         self.view.translate(-resolve_shift.x(), -resolve_shift.y())
+                #     self.network.set_background_image()
+                #     if self.auto_render.isChecked():
+                #         export_loom(self.network,self.filedata)
+                #         render_loom( "render.json", "render.svg" )
+                # elif resolve_shift is False:
+                #     print('no shift')
+                #     m = QMessageBox()
+                #     m.setText("Failed to realise layout.")
+                #     m.setIcon(QMessageBox.Warning)
+                #     m.setStandardButtons(QMessageBox.Ok)
+                #     m.exec()
             self.history_checkpoint( self.network_change )
 
         ### Remember mouse position for next time and redraw.
@@ -258,6 +312,10 @@ class Canvas(QWidget):
             if dist < closest_dist:
                 closest_dist = dist
                 ui.hover_node = v
+
+        # If a group is hovered 
+        if self.group: 
+            self.group.has_point_in_label_button(self.mouse_pos)
 
         # Find the closest label (we do this by checking if the mouse is in the bounding box of the label
         # (old: tried to make this faster by checking if it was close to either the head or tail of the label, this lead to wonky results unfortunatley)
@@ -448,7 +506,6 @@ class Canvas(QWidget):
         # If no label node is currently selected, check if the user is hovering over the label port
         if (ui.selected_label_node is None and ui.hover_node and ui.hover_node.label_node.port == ui.hover_empty_port):
             ui.selected_label_node = ui.hover_node
-        
 
         #### Handle dragging 
 
@@ -458,12 +515,33 @@ class Canvas(QWidget):
         ui.drag_label = ui.hover_label
         ui.drag_port = ui.hover_port
 
+        # if len(self.lasso_path.toList()) >= 3 and self.lasso_path.containsPoint(self.mouse_pos, Qt.OddEvenFill): 
+        #     self.drag_group = True 
+
+        self.drag_group = True 
         # Handle dragging of a lasso group 
-        if len(self.lasso_path.toList()) >= 3 and self.lasso_path.containsPoint(self.mouse_pos, Qt.OddEvenFill): 
-            self.drag_group = True 
+        if self.group and self.group.has_point_in_center(self.mouse_pos): 
+            # Dragging of move button within a group 
+            self.move_group = True 
+        elif self.group and self.group.has_point_in_pivot_button(self.mouse_pos) != None: 
+            # returns the index of the button to pivot around 
+            self.pivot_group = self.group.has_point_in_pivot_button(self.mouse_pos) 
+        elif self.group and self.group.has_point_in_expand(self.mouse_pos): 
+            self.expand_group = True
+        elif self.group and self.group.has_point_in_lock(self.mouse_pos): 
+            self.lock_group = True 
+        elif self.group and self.group.has_point_in_label_button(self.mouse_pos) != None: 
+            self.label_group = True 
         else: 
-            self.lasso_path = QPolygonF()
+            # Otherwise deselect everyting 
+            self.move_group = False 
+            self.expand_group = False
+            self.pivot_group = None 
             self.drag_group = False 
+            self.group = None 
+            self.selection_path = QPolygonF()
+            self.brush = QPainterPath()
+
 
     def handle_release(self, event):
         """
@@ -477,16 +555,26 @@ class Canvas(QWidget):
         self.network_change is updated to describe modifications made.
         """
 
+        # We don't care about dragging only for releasing so we handle locking here 
+        if self.group and self.lock_group: 
+            locked = self.group.toggle_lock()
+            self.network_change = 'unlocked group' if locked else 'locked group'
+
+        if self.group and self.label_group and self.group.hover_label_port != None: 
+            
+            new_port = self.group.set_group_labels()
+            self.network_change = f'changed labels to port {new_port}'
+
+        # Handles every drag release event 
         self.handle_release_drag(event)
 
         # If no edge is selected we do nothing 
-        if ui.selected_edge is not None: return 
+        if ui.selected_edge is None: return 
 
         if ui.hover_edge is None and ui.hover_empty_port is None:
             # Released on empty space -> clear selection
             ui.selected_node = None
             ui.selected_edge = None
-                
         elif ui.selected_edge==ui.hover_edge:
             # Released on the same edge -> keep selection unchanged
             pass # leave it selected?
@@ -533,44 +621,86 @@ class Canvas(QWidget):
         self.drag = False
         ui.drag_node, ui.drag_label, ui.drag_port = None, None, None
 
-        # End group dragging if active
+        # disable the buttons but keep the group 
         if self.drag_group:
-            self.group = []
-            self.drag_group = False
-            self.lasso_path = QPolygonF()
+            self.move_group = False 
+            self.expand_group = False 
+            self.lock_group = False 
+            self.label_group = False 
+            self.pivot_group = None 
+            return 
+            # self.group = None 
+            # self.drag_group = False
+            # self.move_group = False 
+            # self.expand_group = False 
+            # self.pivot_group = None 
+            # self.selection_path = QPolygonF()
+            # self.brush = QPainterPath()
 
         # ignore lasso logic unless the lasso forms a valid polygon or if we end over a node (because this messes with other actions)
-        if len(self.lasso_path.toList()) < 3 or ui.hover_node is not None:
+        if len(self.selection_path.toList()) < 2:
             return
 
         # Shift + lasso: toggle lock state for all nodes inside the lasso
         if event.modifiers() == Qt.ShiftModifier:
             for v in self.network.nodes.values():
-                if self.lasso_path.containsPoint(v.pos, Qt.OddEvenFill):
+                if self.selection_path.containsPoint(v.pos, Qt.OddEvenFill):
                     v.locked = not v.locked
 
             self.network_change = "Lasso lock/unlock"
-            self.lasso_path = QPolygonF()
+            self.selection_path = QPolygonF()
             return
 
-        # Normal lasso: collect all nodes inside the lasso into a group
-        self.group = []
-        outsider = None
+        # Different bahaviour for different selection modes 
+        nodes_in_selection: list[Node] = []
+        outsider_edges: list[Edge] = []
+        outsider_nodes: list[Node] = []
+        
+        if self.selection_mode == 0: 
+            # rectangle selection: collect all nodes inside the rectangle 
+            all_points = self.selection_path.toList()
+            rect = QRectF(all_points[0], all_points[-1])
 
-        for v in self.network.nodes.values():
-            if self.lasso_path.containsPoint(v.pos, Qt.OddEvenFill):
-                self.group.append(v)
+            for v in self.network.nodes.values():
+                if rect.contains(v.pos):
+                    nodes_in_selection.append(v) 
+
+        elif self.selection_mode == 1: 
+            # lasso: collect all nodes inside the lasso into a group
+            for v in self.network.nodes.values():
+                if self.selection_path.containsPoint(v.pos, Qt.OddEvenFill):
+                    nodes_in_selection.append(v) 
+
+        elif self.selection_mode == 2: 
+            # brush mode: collect all nodes inside the brush 
+            path = QPainterPath()
+
+            radius = 50
+            for point in self.selection_path.toList():
+                circle = QPainterPath()
+                circle.addEllipse(point, radius, radius)
+                path = path.united(circle)
+
+            path = path.simplified()
+            brush = path.toFillPolygon()
+            
+            for v in self.network.nodes.values():
+                if brush.containsPoint(v.pos, Qt.OddEvenFill):
+                    nodes_in_selection.append(v)
+            
+        # If no nodes are found in the lasso we do not proceed 
+        if len(nodes_in_selection) < 1: return 
 
         # Find an edge that connects the group to a node outside the group
-        for v in self.group:
+        for v in nodes_in_selection:
             for e in v.edges:
                 other_node = e.other(v)
-                if other_node not in self.group:
-                    outsider = [other_node, e]
+                if other_node not in nodes_in_selection:
+                    outsider_edges.append(e)
+                    outsider_nodes.append(other_node)
 
-        # If a group was found, append the outsider connection information
-        if self.group and outsider is not None:
-            self.group.append(outsider)
+        # Create a group 
+        self.group = Group(nodes_in_selection, outsider_edges, outsider_nodes)
 
     def handle_double_click(self): 
         """
@@ -687,43 +817,54 @@ class Canvas(QWidget):
         - Reassigning each node's label port
         """
 
-        # the last item stores the outside connection as [Node, Edge]
-        if isinstance(self.group[-1], list): 
-            # extra outside node and edge to separate them from the group nodes
-            outside_v: Node = self.group[-1][0]
-            outside_e: Edge = self.group[-1][1]
-            group = self.group[:-1]
+        # if the group can not be moved we do nothing 
+        if not self.group.can_be_moved(): return 
 
-            # find closest port on the outside node relative to the mouse
-            closer_port = outside_v.check_for_closer_port(self.mouse_pos)
+        if self.move_group: 
+            moved = self.group.move(self.mouse_pos)
+            if moved: self.network_change = 'moved group' 
+        elif self.pivot_group != None: 
+            pivot_point, rotation = self.group.pivot(self.mouse_pos, self.pivot_group)
+        
+            if pivot_point: 
+                self.network_change = 'pivot clockwise' if rotation <= 0 else 'pivot counter clockwise'
+        elif self.expand_group: 
+            self.group.expand(self.mouse_pos)
+            self.network_change = 'increase length'
 
-            # Only rotate the group if the target port differs from the current one
-            if closer_port != outside_e.port_at(outside_v): 
-                # Determine rotation direction: clockwise or counterclockwise
-                cc_wise = 1 if closer_port > outside_e.port_at(outside_v) else -1
+    def select_dragging(self): 
+        self.selection_path.append(self.mouse_pos) 
+        # brush mode 
+        if self.selection_mode == 2: 
+            circle = QPainterPath()
+            circle.addEllipse(self.mouse_pos, 50, 50)
+            self.brush = self.brush.united(circle)
+            self.brush = self.brush.simplified()
 
-                # rotate all nodes in the group by shifting ports in the same direction
-                for v in group: 
-                    v.lock()
+    def handle_line_select(self, color: str): 
+        # First clear the original group, if there is one
+        self.move_group = False 
+        self.expand_group = False
+        self.pivot_group = None 
+        self.drag_group = False 
+        self.group = None 
+        self.selection_path = QPolygonF()
+        self.brush = QPainterPath()
 
-                    new_label_port = (v.label_node.port + cc_wise) % 8
+        nodes = self.network.lines[color]
+        outsider_edges: list[Edge] = []
+        outsider_nodes: list[Node] = []
 
-                    # reassign all internal edges connected to other nodes in the group
-                    for e in v.edges: 
-                        if e.other(v) in group: 
-                            v.assign(e, (e.port_at(v) + cc_wise) % 8)
+        # Find an edge that connects the group to a node outside the group
+        for v in nodes:
+            for e in v.edges:
+                other_node = e.other(v)
+                if other_node not in nodes:
+                    outsider_edges.append(e)
+                    outsider_nodes.append(other_node)
 
-                    # reassign the node label to the rotated port
-                    v.assign_label(new_label_port)
-
-                # reassign the outside edge at the external node to complete the pivot
-                outside_v.assign_both_ends(outside_e, (outside_e.port_at(outside_v) + cc_wise) % 8)
-
-                self.network_change = 'pivot right' if closer_port > outside_e.port_at(outside_v) else 'pivot left'
-
-    def lasso_select_dragging(self): 
-        # add the mouse position to the current lasso path 
-        self.lasso_path.append(self.mouse_pos) 
+        # Create a group 
+        self.group = Group(nodes, outsider_edges, outsider_nodes)
     
     def handle_scale_at(self, mouse_pos, scale):
         pos = self.worldspace(mouse_pos)

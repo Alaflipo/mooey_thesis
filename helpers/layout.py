@@ -102,6 +102,7 @@ def layout_lp( net: Network, label_dist:int = 20, stable_node:Node = None ):
                 # Bend was a Node for solving; reduce it to a point
                 e.bend = QPointF( e.bend.xvar.solution_value(), e.bend.yvar.solution_value() )
 
+        print(stable_node)
         if stable_node is not None: return stable_node.pos - old_stable_pos
         else: return None
     else:

@@ -174,6 +174,17 @@ class Network:
             new_y = min_y + (v.geo_pos.y() - min_y_geo) * (max_y - min_y) / (max_y_geo - min_y_geo)
             v.background_pos = QPointF(new_x, new_y)
             
+    def divide_in_lines(self): 
+        self.lines: dict[str, list[Node]] = {}
+        for edge in self.edges: 
+            for color in edge.color: 
+                if color in self.lines: 
+                    if not edge.v[0] in self.lines[color]: self.lines[color].append(edge.v[0])
+                    if not edge.v[1] in self.lines[color]: self.lines[color].append(edge.v[1])
+                else: 
+                    self.lines[color] = [edge.v[0], edge.v[1]]
+
+        print(self.lines)
 
 class Node:
     def __init__(self, x, y, name: str, label:str = ""):
@@ -314,10 +325,11 @@ class Node:
             self.assign(self.edges[1],opposite_port(a))
         else: return False
 
-    def get_free_ports(self): 
+    def get_free_ports(self, ignore_label=False): 
         free_ports = []
         for i, port in enumerate(self.ports): 
             if port == None: free_ports.append(i)
+            if type(port) == Label and ignore_label: free_ports.append(i)
         return free_ports
     
     def first_free_port(self, exceptions=[]): 

@@ -1,7 +1,10 @@
 from PySide6.QtGui import QColor, QPainterPath, QPen, QFont, QPainter, QPolygonF, QBrush
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QRectF
+from PySide6.QtSvgWidgets import QSvgWidget
+from PySide6.QtSvg import QSvgRenderer
 
 from elements.network import *
+from elements.group import Group
 from math import sqrt
 
 import ui
@@ -27,7 +30,7 @@ port_offset = [ QPointF(-1,0)
 
 font = QFont("Helvetica", 30, QFont.Bold)
 
-def render_network( painter: QPainter, net: Network, show_background: bool, label_dist: int ):
+def render_network( painter: QPainter, net: Network, show_background: bool, label_dist: int, group: Group ):
 
     # Coordinate system axes
     painter.setPen(QPen(QColor('lightgray'),10))
@@ -135,6 +138,8 @@ def render_network( painter: QPainter, net: Network, show_background: bool, labe
         painter.setBrush(ui.node_brush)
         painter.drawEllipse(v.pos, 10, 10)
 
+        if group and v in group.nodes and group.hover_label_port == None: continue 
+
         if (not ui.drag_node or ui.hover_node) and v.label_node.label_text != "": 
             if not v.label_node.center_label: 
                 # Draw bouding box label
@@ -181,18 +186,144 @@ def render_lasso(painter: QPainter, points: QPolygonF):
     painter.setPen(ui.lasso_pen)
     painter.drawPolyline(points)
 
+def render_brush(painter: QPainter, points: QPolygonF, brush: QPainterPath): 
+    ui.lasso_pen.setStyle(Qt.DashLine)
+    painter.setPen(Qt.NoPen)
+    painter.setBrush(QBrush(QColor(200,10,10,100)))
+    all_points = points.toList()
+    if len(all_points) > 2: 
+        # One polygon approximation of the filled shape
+        painter.drawPolygon(brush.toFillPolygon())
+
+def render_rectangle_select(painter: QPainter, points: QPolygonF): 
+    ui.lasso_pen.setStyle(Qt.DashLine)
+    painter.setPen(ui.lasso_pen)
+    painter.setBrush(Qt.NoBrush)
+    all_points = points.toList()
+    if len(all_points) >= 2: 
+        rect = QRectF(all_points[0], all_points[-1])
+        painter.drawRect(rect)
+
 def render_highlighted_nodes(painter: QPainter, nodes: list[Node]): 
     painter.setPen(ui.active_pen)
     painter.setBrush(ui.active_brush)
     for node in nodes: 
         painter.drawEllipse(node.pos, 10, 10)
 
-def render_group(painter: QPainter, points: QPolygonF, group: list[Node]): 
-    if len(group) > 0: 
-        ui.lasso_pen.setStyle(Qt.SolidLine)
-        painter.setBrush(QBrush(QColor(0,0,0,20)))
-        painter.setPen(ui.lasso_pen)
-        painter.drawPolygon(points)
+def render_group(painter: QPainter, group: Group,  move_group: bool, pivot_group: None | int): 
+    ui.lasso_pen.setStyle(Qt.SolidLine)
+    painter.setBrush(QBrush(QColor(200,10,10,100)))
+    painter.setPen(ui.lasso_pen)
+    
+    # draw border 
+    if group.hover_label_port == None: 
+        for border_part in group.border: 
+            painter.drawPolygon(border_part)
+    
+    # painter.drawRect(group.bounding_rect)
+
+    painter.setPen(ui.button_pen)
+    # draw pivot buttons 
+    if not move_group and group.hover_label_port == None: 
+        for i, button in enumerate(group.pivot_buttons_pos): 
+            if type(pivot_group) == int and pivot_group != i: continue  
+            painter.setBrush(QBrush(QColor('lightgreen')))
+            painter.drawEllipse(button, 20, 20)
+            painter.setBrush(Qt.NoBrush )
+            open_dir = angle_from_points(button, group.conn_nodes[i].pos) + 90
+            draw_arc_with_arrows(painter, button, 40, arc_deg=90, open_direction_deg=open_dir)
+
+    painter.setBrush(QBrush(QColor('red')))
+    # draw middle buttons
+    if pivot_group == None and group.hover_label_port == None: 
+        move_but = group.move_button_pos
+        painter.drawEllipse(move_but, group.button_size, group.button_size)
+        renderer = QSvgRenderer("assets/move_icon.svg")
+        icon_size = group.button_size + 10
+        renderer.render(painter, 
+                        QRectF(move_but.x() - 15, move_but.y() - icon_size/2, icon_size, icon_size))
+
+    painter.setBrush(QBrush(QColor('lightblue')))
+    if pivot_group == None and not move_group: 
+        if group.hover_label_port == None: 
+            # for expand button 
+            expand_but = group.expand_button_pos
+            painter.drawEllipse(expand_but, group.button_size, group.button_size)
+            renderer = QSvgRenderer("assets/expand_rot.svg" if group.nodes[0].left_line else "assets/expand.svg")
+            icon_size = group.button_size + 10
+            renderer.render(painter, QRectF(expand_but.x() - 15, expand_but.y() - icon_size/2, icon_size, icon_size))
+
+            # For lock button 
+            lock_but = group.lock_button_pos
+            painter.drawEllipse(lock_but, group.button_size, group.button_size)
+            renderer = QSvgRenderer("assets/lock.svg" if group.check_locked_status() else "assets/unlock.svg")
+            icon_size = group.button_size
+            renderer.render(painter, QRectF(lock_but.x() - 10, lock_but.y() - icon_size/2, icon_size, icon_size))
+
+        # For label button 
+        label_but = group.label_button_pos
+        painter.drawEllipse(label_but, group.button_size, group.button_size)
+        renderer = QSvgRenderer("assets/label.svg")
+        icon_size = group.button_size - 2
+        renderer.render(painter, QRectF(label_but.x() - 8, label_but.y() - icon_size/2 + 1, icon_size, icon_size))
+
+        # Draw label rose 
+        ui.rose_free_pen.setCosmetic(True)
+        ui.rose_used_pen.setCosmetic(True)
+        ui.active_handle_pen.setCosmetic(True)
+    
+        for i in range(8):
+            if group.label_port_active == i: 
+                painter.setBrush(ui.rose_used_brush)
+            else:
+                painter.setBrush(ui.rose_free_brush)
+
+            if group.hover_label_port == i: 
+                painter.setBrush(ui.highlight_brush)
+
+            painter.drawEllipse( group.label_button_pos + 20*port_offset[i], 6, 6)
+
+def angle_from_points(p1: QPointF, p2: QPointF) -> float:
+    dx = p2.x() - p1.x()
+    dy = p1.y() - p2.y() 
+    return math.degrees(math.atan2(dy, dx))
+
+def draw_arrow_head(painter: QPainter, tip: QPointF, direction_deg: float, size: float = 12, spread_deg: float = 28):
+    a1 = math.radians(direction_deg + 180 - spread_deg)
+    a2 = math.radians(direction_deg + 180 + spread_deg)
+
+    p1 = QPointF(tip.x() + size * math.cos(a1), tip.y() - size * math.sin(a1))
+    p2 = QPointF(tip.x() + size * math.cos(a2), tip.y() - size * math.sin(a2))
+
+    painter.drawLine(tip, p1)
+    painter.drawLine(tip, p2)
+
+def draw_arc_with_arrows(painter: QPainter, center: QPointF, radius: float, arc_deg: float, open_direction_deg: float):
+    
+    rect = QRectF(center.x() - radius, center.y() - radius, 2 * radius, 2 * radius)
+
+    start_deg = open_direction_deg + arc_deg/2
+
+    path = QPainterPath()
+    path.arcMoveTo(rect, start_deg)
+    path.arcTo(rect, start_deg, arc_deg)
+    painter.drawPath(path)
+
+    # endpoints from the path itself
+    p_start = path.pointAtPercent(0.0)
+    p_end = path.pointAtPercent(1.0)
+
+    # nearby points to determine tangent direction
+    eps = 0.01
+    p_start_next = path.pointAtPercent(eps)
+    p_end_prev = path.pointAtPercent(1.0 - eps)
+
+    start_dir = angle_from_points(p_start, p_start_next) + 185
+    end_dir = angle_from_points(p_end_prev, p_end) - 5
+
+    draw_arrow_head(painter, p_start, start_dir)
+    draw_arrow_head(painter, p_end, end_dir)
+
 
 def render_concentric_circles(painter: QPainter): 
     #For displaying concentric circles 

@@ -47,6 +47,8 @@ active_brush = QBrush( QColor('lightgreen'))
 
 lasso_pen = QPen(QColor('lightgray'), 3)
 
+button_pen = QPen( QColor('black'), 2 )
+
 # Parameters for UI geometry
 
 hover_node_radius = 40
