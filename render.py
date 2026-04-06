@@ -138,7 +138,7 @@ def render_network( painter: QPainter, net: Network, show_background: bool, labe
         painter.setBrush(ui.node_brush)
         painter.drawEllipse(v.pos, 10, 10)
 
-        if group and v in group.nodes and group.hover_label_port == None: continue 
+        if group and v in group.nodes and not group.show_labels and group.hover_label_port == None: continue 
 
         if (not ui.drag_node or ui.hover_node) and v.label_node.label_text != "": 
             if not v.label_node.center_label: 
@@ -216,7 +216,7 @@ def render_group(painter: QPainter, group: Group,  move_group: bool, pivot_group
     painter.setPen(ui.lasso_pen)
     
     # draw border 
-    if group.hover_label_port == None: 
+    if group.hover_label_port == None and not group.show_labels: 
         for border_part in group.border: 
             painter.drawPolygon(border_part)
     
@@ -224,7 +224,7 @@ def render_group(painter: QPainter, group: Group,  move_group: bool, pivot_group
 
     painter.setPen(ui.button_pen)
     # draw pivot buttons 
-    if not move_group and group.hover_label_port == None: 
+    if not move_group and group.hover_label_port == None and not group.show_labels: 
         for i, button in enumerate(group.pivot_buttons_pos): 
             if type(pivot_group) == int and pivot_group != i: continue  
             painter.setBrush(QBrush(QColor('lightgreen')))
@@ -235,7 +235,7 @@ def render_group(painter: QPainter, group: Group,  move_group: bool, pivot_group
 
     painter.setBrush(QBrush(QColor('red')))
     # draw middle buttons
-    if pivot_group == None and group.hover_label_port == None: 
+    if pivot_group == None and group.hover_label_port == None and not group.show_labels: 
         move_but = group.move_button_pos
         painter.drawEllipse(move_but, group.button_size, group.button_size)
         renderer = QSvgRenderer("assets/move_icon.svg")
@@ -245,7 +245,7 @@ def render_group(painter: QPainter, group: Group,  move_group: bool, pivot_group
 
     painter.setBrush(QBrush(QColor('lightblue')))
     if pivot_group == None and not move_group: 
-        if group.hover_label_port == None: 
+        if group.hover_label_port == None and not group.show_labels: 
             # for expand button 
             expand_but = group.expand_button_pos
             painter.drawEllipse(expand_but, group.button_size, group.button_size)
@@ -259,6 +259,13 @@ def render_group(painter: QPainter, group: Group,  move_group: bool, pivot_group
             renderer = QSvgRenderer("assets/lock.svg" if group.check_locked_status() else "assets/unlock.svg")
             icon_size = group.button_size
             renderer.render(painter, QRectF(lock_but.x() - 10, lock_but.y() - icon_size/2, icon_size, icon_size))
+
+            # For bend button 
+            bend_but = group.bend_button_pos
+            painter.drawEllipse(bend_but, group.button_size, group.button_size)
+            renderer = QSvgRenderer("assets/lock.svg")
+            icon_size = group.button_size
+            renderer.render(painter, QRectF(bend_but.x() - 10, bend_but.y() - icon_size/2, icon_size, icon_size))
 
         # For label button 
         label_but = group.label_button_pos

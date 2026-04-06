@@ -40,9 +40,17 @@ class Group:
         self.expand_button_pos: QPointF | None = None 
         self.lock_button_pos: QPointF | None = None 
         self.label_button_pos: QPointF | None = None 
+        self.bend_button_pos: QPointF | None = None 
 
         self.label_port_active: int | None = None 
         self.hover_label_port: int | None = None 
+
+        # Slider values 
+        self.bend_pentalty: float = 0
+        self.label_hor: float = 0 
+        self.label_same_side: float = 0
+
+        self.show_labels: bool = False 
 
         self.update_border()
         self.determine_pivot_buttons()
@@ -62,6 +70,10 @@ class Group:
     
     def has_point_in_lock(self, point) -> bool: 
         dist = QVector2D(self.lock_button_pos - point).length()
+        return dist < self.button_size
+
+    def has_point_in_bend(self, point) -> bool: 
+        dist = QVector2D(self.bend_button_pos - point).length()
         return dist < self.button_size
     
     def has_point_in_pivot_button(self, point) -> bool: 
@@ -92,6 +104,27 @@ class Group:
                 return i
         return None 
     
+    def get_slider_values(self) -> tuple: 
+        return (self.bend_pentalty, self.label_hor, self.label_same_side)
+    
+    def update_bend_penalty(self, value): 
+        self.bend_pentalty = value
+        for node in self.nodes: 
+            node.bend_penalty = value 
+        self.show_labels = False 
+    
+    def update_hor_label(self, value): 
+        self.bend_pentalty = value
+        for node in self.nodes: 
+            node.label_hor = value 
+        self.show_labels = True 
+
+    def update_same_side_label(self, value): 
+        self.bend_pentalty = value
+        for node in self.nodes: 
+            node.label_same_side = value 
+        self.show_labels = True 
+
     def circular_diff(self, a, b, n=8):
         return (b - a + n//2) % n - n//2
 
@@ -200,6 +233,10 @@ class Group:
             if v.isfree(self.label_port_active): 
                 v.assign_label(self.label_port_active)
         return self.label_port_active
+    
+    def bend(self): 
+        for node in self.nodes: 
+            node.bend_penalty += 1
 
     def find_all_edges(self) -> list[Edge]:
         edges: list[Edge] = []
@@ -217,8 +254,9 @@ class Group:
             self.expand_button_pos = QPointF(self.bounding_rect.topLeft().x() - 60, self.bounding_rect.topLeft().y() - 60)
         else: 
             self.expand_button_pos = QPointF(self.bounding_rect.topRight().x() + 60, self.bounding_rect.topRight().y() - 60)
-        self.lock_button_pos = QPointF(self.bounding_rect.center().x() - 30, self.bounding_rect.bottom() + 60)
-        self.label_button_pos = QPointF(self.bounding_rect.center().x() + 30, self.bounding_rect.bottom() + 60)
+        self.lock_button_pos = QPointF(self.bounding_rect.center().x() - 50, self.bounding_rect.bottom() + 60)
+        self.label_button_pos = QPointF(self.bounding_rect.center().x(), self.bounding_rect.bottom() + 60)
+        self.bend_button_pos = QPointF(self.bounding_rect.center().x() + 50, self.bounding_rect.bottom() + 60)
 
         lines: list[LineString] = [LineString([edge.v[0].pos.toTuple(), edge.v[1].pos.toTuple()]) for edge in self.internal_edges]
 

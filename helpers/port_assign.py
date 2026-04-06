@@ -19,7 +19,7 @@ def cost_matrix( v: Node):
 # Two things to check for: 
 # - We give priority to labels that are horizontal so 0 and 4 and don't want 2 and 6 and for the odd numbers they should be equal
 # - We want labels that are on the outside to appear on the outside (either do this by a weighted middle point of the network or check whether labels point towards the outer face instead of an inner face)
-def cost_matrix_labels(v: Node, label_strength: float, mid_point_x, old_node: Node): 
+def cost_matrix_labels(v: Node, mid_point_x, old_node: Node): 
     port_angles = [ i*(pi/4) for i in range(8) ]
     edge_angles = []
     for i,e in enumerate(v.edges): 
@@ -29,7 +29,7 @@ def cost_matrix_labels(v: Node, label_strength: float, mid_point_x, old_node: No
             edge_angles.append(e.geo_angle(v))
     # edge_angles = [ e.geo_angle(v) for e in v.edges ]
     port_edge_matrix = np.matrix( [ [ angle_error(pa,ea)**2 for pa in port_angles ] for ea in edge_angles ] )
-    wl = [0.01 * label_strength, 0.02 * label_strength, 0.03 * label_strength]
+    wl = [0.01 * v.label_hor, 0.02 * v.label_hor, 0.03 * v.label_hor]
 
     ### Based on lines add weights for labels 
 
@@ -78,14 +78,14 @@ def assign_by_rounding( net: Network ):
 ### MATCHING ###
 
 from scipy.optimize import linear_sum_assignment
-def assign_by_local_matching( net: Network, label_strength: float ):
+def assign_by_local_matching( net: Network ):
     net_clone = net.clone()
     clone_nodes = list(net_clone.nodes.values())
     net.evict_all_labels()
     net.evict_all_edges()
     for vi, v in enumerate(net.nodes.values()):
         # Cost matrix for labels
-        costs = cost_matrix_labels(v, label_strength, net.midpoint.x(), clone_nodes[vi])
+        costs = cost_matrix_labels(v, net.midpoint.x(), clone_nodes[vi])
         _, cols = linear_sum_assignment(costs)
         for i,p in enumerate(cols[:-1]):
             v.assign( v.edges[int(i)], int(p) )
@@ -99,7 +99,7 @@ def assign_by_local_matching( net: Network, label_strength: float ):
 ### - Labels should appear on the same side of a line 
 
 from ortools.linear_solver import pywraplp as lp
-def assign_by_ilp( net: Network, bend_cost=1, label_hor_strength=1, label_side_strength=1):
+def assign_by_ilp( net: Network):
     net_clone = net.clone()
     clone_nodes = list(net_clone.nodes.values())
     net.evict_all_labels()
@@ -113,7 +113,7 @@ def assign_by_ilp( net: Network, bend_cost=1, label_hor_strength=1, label_side_s
     portvars = dict()
     portvars_labels = dict()
     for vi, v in enumerate(net.nodes.values()):
-        costs = cost_matrix_labels(v, label_hor_strength, net.midpoint.x(), old_node=clone_nodes[vi])
+        costs = cost_matrix_labels(v, net.midpoint.x(), old_node=clone_nodes[vi])
         for i,e in enumerate(v.edges):
             my_portvars = [solver.BoolVar(f'pass_{v.name}_{i}_{p}') for p in range(8)]
             for p in range(8):
@@ -143,7 +143,7 @@ def assign_by_ilp( net: Network, bend_cost=1, label_hor_strength=1, label_side_s
     for v in net.nodes.values():
         if len(v.edges)==2:
             penalty = solver.BoolVar(f'bend_{v.name}')
-            objective += bend_cost*penalty
+            objective += v.bend_penalty*penalty
             e = v.edges[0]
             f = v.edges[1]
             for p in range(8):
@@ -156,8 +156,9 @@ def assign_by_ilp( net: Network, bend_cost=1, label_hor_strength=1, label_side_s
         for p in range(8): 
             for a_name, b_name in zip(line, line[1:]): 
                 a, b = net.nodes[a_name], net.nodes[b_name]
+                penalty_strength = max(a.label_same_side, b.label_same_side)
                 penalty = solver.BoolVar(f'label_{a_name}_{b_name}')
-                objective += label_side_strength/10 * penalty
+                objective += penalty_strength * penalty
                 solver.Add( penalty >= portvars_labels[a][p] - portvars_labels[b][p])
                 # solver.Add( penalty <= portvars_labels[a][p] - portvars_labels[b][p])
 
@@ -221,7 +222,7 @@ def spacewalk( v: Node, prev, seen ):
     walk.append(v)
     return walk
 
-def post_fix_overlap_ilp_new(net: Network, label_dist, label_hor_strength):
+def post_fix_overlap_ilp_new(net: Network, label_dist):
     
     solver: lp.Solver = lp.Solver.CreateSolver("SCIP")
 
@@ -230,7 +231,7 @@ def post_fix_overlap_ilp_new(net: Network, label_dist, label_hor_strength):
     portvars_labels: dict[Node, dict[int, any]] = dict()
 
     for vi, v in enumerate(net.nodes.values()):
-        costs = cost_matrix_labels(v, label_hor_strength, net.midpoint.x(), old_node=v)
+        costs = cost_matrix_labels(v, net.midpoint.x(), old_node=v)
 
         #### For labeling ####
         free_ports = v.get_free_ports()

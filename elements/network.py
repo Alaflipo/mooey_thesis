@@ -204,6 +204,10 @@ class Node:
 
         self.locked: bool = False 
 
+        self.bend_penalty: float = 0 
+        self.label_hor: float = 0 
+        self.label_same_side: float = 0 
+
     # Still need to add label_node and edges (edges and ports) on your own 
     def clone(self, x, y, name, label) -> Node:
         other = Node(x, y, name, label)

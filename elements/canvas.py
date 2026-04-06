@@ -9,7 +9,7 @@ from io_management.fileformat_graphml import read_network_from_graphml
 from io_management.fileformat_mooey import write_mooey_file, read_mooey_file, get_unique_filename
 
 from helpers.layout import layout_lp
-from helpers.port_assign import assign_by_local_matching
+import helpers.port_assign as pa
 
 from elements.network import Label, Node, Edge, Network
 from elements.group import Group
@@ -75,9 +75,10 @@ class Canvas(QWidget):
         self.expand_group: bool = False 
         self.lock_group: bool = False 
         self.label_group: bool = False 
+        self.bend_group: bool = False 
         self.pivot_group: int | None = None 
 
-        self.groups: list[Group] = self.create_groups()
+        self.groups: dict[str, Group] = {}
         self.group: Group | None = None
         
         # 0 = square, 1 = lasso, 2 = brush, 3 = line 
@@ -150,8 +151,15 @@ class Canvas(QWidget):
             if rect.contains(p): return False
         return True
     
-    def create_groups(self): 
-        groups: list[Group] = []
+    def add_group(self, id: str, text: str, color: str | None = None) -> bool: 
+        if not self.group: return False 
+
+        self.group.name = text 
+        self.group.color = color 
+        self.groups[id] = self.group
+        return True 
+
+    def create_groups_from_lines(self): 
         for i, color in enumerate(self.network.lines): 
             nodes = self.network.lines[color]
             outsider_edges: list[Edge] = []
@@ -166,9 +174,7 @@ class Canvas(QWidget):
                         outsider_nodes.append(other_node)
 
             # Create a group 
-            groups.append(Group(nodes, outsider_edges, outsider_nodes, name=f'metro-line {i}', color=f'#{color}'))
-
-        return groups 
+            self.groups[color] = Group(nodes, outsider_edges, outsider_nodes, name=f'metro-line {i}', color=f'#{color}')
 
 
     # Forward every mouse event to the function handle_mouse 
@@ -551,6 +557,8 @@ class Canvas(QWidget):
             self.expand_group = True
         elif self.group and self.group.has_point_in_lock(self.mouse_pos): 
             self.lock_group = True 
+        elif self.group and self.group.has_point_in_bend(self.mouse_pos): 
+            self.bend_group = True 
         elif self.group and self.group.has_point_in_label_button(self.mouse_pos) != None: 
             self.label_group = True 
         else: 
@@ -580,6 +588,10 @@ class Canvas(QWidget):
         if self.group and self.lock_group: 
             locked = self.group.toggle_lock()
             self.network_change = 'unlocked group' if locked else 'locked group'
+        if self.group and self.bend_group: 
+            self.group.bend()
+            pa.assign_by_ilp(self.network)
+            self.network_change = 'added bend'
 
         if self.group and self.label_group and self.group.hover_label_port != None: 
             
@@ -647,6 +659,7 @@ class Canvas(QWidget):
             self.move_group = False 
             self.expand_group = False 
             self.lock_group = False 
+            self.bend_group = False 
             self.label_group = False 
             self.pivot_group = None 
             return 
@@ -862,30 +875,25 @@ class Canvas(QWidget):
             self.brush = self.brush.united(circle)
             self.brush = self.brush.simplified()
 
-    def handle_line_select(self, color: str): 
+    def handle_group_select(self, id: str | None): 
+
         # First clear the original group, if there is one
         self.move_group = False 
         self.expand_group = False
         self.pivot_group = None 
         self.drag_group = False 
+        self.bend_group = False
+        self.lock_group = False 
         self.group = None 
         self.selection_path = QPolygonF()
         self.brush = QPainterPath()
 
-        nodes = self.network.lines[color]
-        outsider_edges: list[Edge] = []
-        outsider_nodes: list[Node] = []
+        if id == None: return 
 
-        # Find an edge that connects the group to a node outside the group
-        for v in nodes:
-            for e in v.edges:
-                other_node = e.other(v)
-                if other_node not in nodes:
-                    outsider_edges.append(e)
-                    outsider_nodes.append(other_node)
-
-        # Create a group 
-        self.group = Group(nodes, outsider_edges, outsider_nodes)
+        # then update the group 
+        self.group = self.groups[id]
+        self.group.update_border()
+        self.group.determine_pivot_buttons()
     
     def handle_scale_at(self, mouse_pos, scale):
         pos = self.worldspace(mouse_pos)

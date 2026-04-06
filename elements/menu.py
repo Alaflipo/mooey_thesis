@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QFrame, QLabel, QCheckBox, QMessageBox, QDialog, QSlider, QComboBox, QButtonGroup, QScrollArea, QListWidget, QListWidgetItem, QToolButton
+from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QFrame, QLabel, QCheckBox, QMessageBox, QDialog, QSlider, QComboBox, QButtonGroup, QScrollArea, QListWidget, QListWidgetItem, QToolButton, QInputDialog
 from PySide6.QtGui import Qt, QAction, QKeySequence, QPolygonF, QIcon, QPixmap, QPainter, QColor
 from PySide6.QtCore import QPointF, QSize, Signal
 
@@ -109,16 +109,18 @@ class MainWindow(QMainWindow):
 
         self.hor_buttons.buttonClicked.connect(self.selection_mode_changed)
 
-        # Color items representing each line 
-        self.combo = QComboBox()
-        for color in self.canvas.network.lines.keys(): 
-            self.combo.addItem(self.make_color_icon("#" + color), 'metro-line')
-        # self.combo.setCurrentIndex(self.method_choice)
-        layout.addWidget(self.combo)
-        self.combo.currentIndexChanged.connect(self.selection_line_changed)
+        ## OLD METHOD 
+        # self.combo = QComboBox()
+        # for color in self.canvas.network.lines.keys(): 
+        #     self.combo.addItem(self.make_color_icon("#" + color), 'metro-line')
+        # # self.combo.setCurrentIndex(self.method_choice)
+        # layout.addWidget(self.combo)
+        # self.combo.currentIndexChanged.connect(self.selection_line_changed)
 
-        item_list = SelectableItemList(self.canvas)
-        layout.addWidget(item_list)
+        # Color items representing each line 
+        self.group_list = GroupList(self.canvas, select_buttons=self.hor_buttons)
+        layout.addWidget(self.group_list)
+        add_sidebar_button(layout, "Add Group", self.add_group_selection)
 
         # Buttons to control port assignment methods 
         add_group_separator(layout)
@@ -181,23 +183,12 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.canvas.auto_render)
 
         self.dropdown_changed(self.method_choice)
-
-    def make_color_icon(self, color_hex, size=16):
-        pixmap = QPixmap(size, size)
-        pixmap.fill(Qt.transparent)
-
-        painter = QPainter(pixmap)
-        print(color_hex)
-        painter.setBrush(QColor(color_hex))
-        painter.setPen(Qt.black)
-        painter.drawRect(0, 0, size - 1, size - 1)
-        painter.end()
-
-        return QIcon(pixmap)
     
     def selection_mode_changed(self, button: QPushButton):
+        self.group_list.clear_selection()
+        button.setChecked(True)
         self.canvas.selection_mode = [mode[0] for mode in self.selection_modes].index(button.property("mode"))
-    
+        
     def dropdown_changed(self, index: int):
         # We add one because the first slider set is for general sliders 
         self.method_choice = index + 1
@@ -210,21 +201,6 @@ class MainWindow(QMainWindow):
         for (label, slider) in self.sliders[self.method_choice]: 
             label.show()
             slider.show()
-
-    def selection_line_changed(self, index: int): 
-         # disable all the buttons 
-        self.hor_buttons.setExclusive(False)
-        for button in self.hor_buttons.buttons():
-            button.setChecked(False)
-        self.hor_buttons.setExclusive(True)
-
-        lines = self.canvas.network.lines
-        color = list(lines.keys())[index]
-        self.canvas.color_selected = color
-        self.canvas.selection_mode = 3 
-
-        self.canvas.handle_line_select(color)
-        print(f'Line with color {color} chosen', lines[color])
 
     def add_slider(self, layout, text, min, max, value, slider_set, tick_size=1): 
         label = QLabel(text)
@@ -256,9 +232,27 @@ class MainWindow(QMainWindow):
                 for edge in self.canvas.network.edges: 
                     edge.min_dist = value * tick_size
                 self.do_layout()
+        elif slider_set==3: 
+            if slider == 0: 
+                for node in self.canvas.network.nodes.values(): 
+                    node.bend_penalty = value * tick_size
+            if slider == 1: 
+                for node in self.canvas.network.nodes.values(): 
+                    node.label_hor = value * tick_size
+            if slider == 2: 
+                for node in self.canvas.network.nodes.values(): 
+                    node.label_same_side = value * tick_size
+            self.do_port_assign()
         elif self.auto_update_port.isChecked(): 
             self.do_port_assign()
-    
+
+    def add_group_selection(self): 
+        name, ok = QInputDialog.getText(self, "Enter name", "Name:")
+        name = name.strip()
+        if ok and name:
+            can_add = self.canvas.add_group(name, name, None)
+            if can_add: self.group_list.add_entry(name, name, None)
+        
     def do_port_assign(self): 
         match self.method_choice: 
             case 1: self.do_assign_round()
@@ -272,13 +266,13 @@ class MainWindow(QMainWindow):
         self.canvas.render()
 
     def do_assign_matching(self):
-        port_assign.assign_by_local_matching(self.canvas.network, self.slider_values[2][0])
+        port_assign.assign_by_local_matching(self.canvas.network)
         self.update_layout_if_auto()
         self.canvas.history_checkpoint("Assign ports by matching")
         self.canvas.render()
 
     def do_assign_ilp(self):
-        port_assign.assign_by_ilp(self.canvas.network, self.slider_values[3][0], self.slider_values[3][1], self.slider_values[3][2])
+        port_assign.assign_by_ilp(self.canvas.network)
         self.update_layout_if_auto()
         self.canvas.history_checkpoint(f"Assign ports globally (bend cost {self.slider_values[3][0]})")
         self.canvas.render()
@@ -323,7 +317,7 @@ class MainWindow(QMainWindow):
         self.canvas.render()
 
     def do_fix_label_overlap(self): 
-        port_assign.post_fix_overlap_ilp_new(self.canvas.network, self.slider_values[0][0], self.slider_values[2][0])
+        port_assign.post_fix_overlap_ilp_new(self.canvas.network, self.slider_values[0][0])
 
         ##### Brute force solution ######
         # overlaps = self.canvas.network.check_label_overlaps()
@@ -416,17 +410,54 @@ class ColorSquare(QWidget):
         painter.setBrush(QColor(self.color))
         painter.drawRect(rect)
 
+class SliderRow(QWidget):
+    value_changed = Signal(int)
 
-class ListItemWidget(QWidget):
+    def __init__(self, id, name, group_id, min, max, value, handle_slider_change, handle_slider_release, parent=None):
+        super().__init__(parent)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        self.id = id 
+        self.group_id = group_id
+
+        self.label = QLabel(name)
+        self.slider = QSlider(Qt.Horizontal)
+        self.slider.setRange(min, max)
+        self.slider.setValue(value)
+        self.value_label = QLabel(str(value))
+
+        self.handle_slider_change = handle_slider_change
+        self.handle_slider_relase =handle_slider_release
+
+        self.slider.valueChanged.connect(lambda value: self.handle_value_changed(value))
+        self.slider.valueChanged.connect(self.value_changed)
+        self.slider.sliderReleased.connect(self.handle_slider_relase)
+
+        layout.addWidget(self.label)
+        layout.addWidget(self.slider, 1)
+        layout.addWidget(self.value_label)
+
+    def handle_value_changed(self, value): 
+        self.value_label.setText(str(value))
+        self.handle_slider_change(self.group_id, self.id, value)
+
+
+class GroupListItem(QWidget):
+    clicked = Signal(object)
     remove_clicked = Signal(object)
 
-    def __init__(self, text, item_id, color=None, parent=None):
+    def __init__(self, text, item_id, color, slider_values: tuple, handle_slider_change, handle_slider_release, parent=None):
         super().__init__(parent)
         self.item_id = item_id
 
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 4, 4, 4)
-        layout.setSpacing(8)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(6, 4, 6, 4)
+        outer.setSpacing(6)
+
+        top_row = QHBoxLayout()
+        top_row.setContentsMargins(0, 0, 0, 0)
+        top_row.setSpacing(8)
 
         if color:
             self.icon_widget = ColorSquare(color)
@@ -442,16 +473,63 @@ class ListItemWidget(QWidget):
         self.remove_button.clicked.connect(
             lambda: self.remove_clicked.emit(self.item_id)
         )
+        
+        top_row.addWidget(self.icon_widget)
+        top_row.addWidget(self.label, 1)
+        top_row.addWidget(self.remove_button)
 
-        layout.addWidget(self.icon_widget)
-        layout.addWidget(self.label, 1)
-        layout.addWidget(self.remove_button)
+        outer.addLayout(top_row)
+
+        self.sliders_container = QWidget()
+        sliders_layout = QVBoxLayout(self.sliders_container)
+        sliders_layout.setContentsMargins(5, 0, 0, 0)
+        sliders_layout.setSpacing(2)
+
+        self.slider1 = SliderRow(0, "bend", item_id, 0, 20, slider_values[0], handle_slider_change, handle_slider_release)
+        self.slider2 = SliderRow(1, "hor", item_id, 0, 100, slider_values[1], handle_slider_change, handle_slider_release)
+        self.slider3 = SliderRow(2, "side", item_id, 0, 200, slider_values[2], handle_slider_change, handle_slider_release)
+
+        sliders_layout.addWidget(self.slider1)
+        sliders_layout.addWidget(self.slider2)
+        sliders_layout.addWidget(self.slider3)
+
+        outer.addWidget(self.sliders_container)
+        self.sliders_container.hide()
+
+        self.current_selected = False
+        self.update_style()
+        
+    
+    def set_selected(self, selected):
+        self.current_selected = selected
+        self.sliders_container.setVisible(selected)
+        self.update_style()
+        self.adjustSize()
+
+    def update_style(self):
+        if self.current_selected:
+            self.setStyleSheet("""
+                QLabel {
+                    color: white;
+                }
+            """)
+        else:
+            self.setStyleSheet("""
+                QLabel {
+                    color: lightgray;
+                }
+            """)
+    
+        # Hacky way to determine whether we click the label/icon or the remove button
+    def mousePressEvent(self, event):
+        if not self.remove_button.geometry().contains(event.pos()):
+            self.clicked.emit(self.item_id)
+        super().mousePressEvent(event)
 
 
-class SelectableItemList(QListWidget):
-    item_removed = Signal(object)
+class GroupList(QListWidget):
 
-    def __init__(self, canvas: Canvas, parent=None):
+    def __init__(self, canvas: Canvas, select_buttons, parent=None):
         super().__init__(parent)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
@@ -459,45 +537,126 @@ class SelectableItemList(QListWidget):
         self.setUniformItemSizes(False)
         self.setFocusPolicy(Qt.NoFocus)
 
+        self.layout = QVBoxLayout(self)
+        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.layout.setSpacing(4)
+
         self.canvas = canvas 
+        self.select_buttons = select_buttons
+
+        self.items = {}
+        self.current_id = None
 
         self.add_current_metro_lines()
-        self.itemSelectionChanged.connect(self.selection_changed)
 
     def add_current_metro_lines(self): 
-        for color in self.canvas.network.lines: 
-            self.add_entry("Metro line", color, f"#{color}")
-        self.update_height()
-    
-    def selection_changed(self): 
-        print(self.itemWidget(self.currentItem()).item_id)
+        # Create the actual groups in the canvas 
+        self.canvas.create_groups_from_lines()
+
+        # Add entries to the list 
+        for i, color in enumerate(self.canvas.network.lines): 
+            self.add_entry(f"Metro Line", color, f"#{color}")
 
     def add_entry(self, text, item_id, color=None):
-        list_item = QListWidgetItem(self)
-        widget = ListItemWidget(text, item_id, color)
+        slider_values = self.canvas.groups[item_id].get_slider_values()
 
-        list_item.setSizeHint(widget.sizeHint())
-        self.addItem(list_item)
-        self.setItemWidget(list_item, widget)
+        widget = GroupListItem(text, item_id, color, slider_values, self.handle_slider_change, self.handle_slider_release)
+        widget.clicked.connect(self.select_item)
+        widget.remove_clicked.connect(self.remove_item)
 
-        widget.remove_clicked.connect(self.remove_entry)
+        self.layout.addWidget(widget)
+        self.items[item_id] = widget
 
-    def remove_entry(self, item_id):
-        for row in range(self.count()):
-            list_item = self.item(row)
-            widget = self.itemWidget(list_item)
-            if widget and widget.item_id == item_id:
-                self.takeItem(row)
-                self.item_removed.emit(item_id)
-                self.update_height()
-                return
+        self.update_height()
+
+    def select_item(self, item_id):
+        # if the selected item is the same we toggle it
+        if self.current_id == item_id:
+            self.clear_selection()
+            return
+
+        # set the previous selected to not selected 
+        if self.current_id is not None and self.current_id in self.items:
+            self.items[self.current_id].set_selected(False)
+
+        # set current selected to selected 
+        self.current_id = item_id
+        self.items[item_id].set_selected(True)
+
+        # for the other select type buttons
+        self.select_buttons.setExclusive(False)
+        for button in self.select_buttons.buttons():
+            button.setChecked(False)
+        self.select_buttons.setExclusive(True)
+
+        # set group selection mode in the canvas 
+        self.canvas.color_selected = item_id
+        self.canvas.selection_mode = 3 
+
+        self.canvas.handle_group_select(item_id)
+        self.canvas.render()
+        self.update_height()
+
+    def clear_selection(self):
+        # when we don't want any of the items to be selected 
+        if self.current_id is not None and self.current_id in self.items:
+            self.items[self.current_id].set_selected(False)
+        self.current_id = None
+        self.canvas.handle_group_select(None)
+        self.update_height()
+
+    def remove_item(self, item_id):
+        # remove the item from the list 
+        widget = self.items.pop(item_id, None)
+        if not widget: return
+
+        if self.current_id == item_id:
+            self.current_id = None
+        
+        # remove the item from the layout
+        self.layout.removeWidget(widget)
+        widget.deleteLater()
+        
+        # Also remove the group from the canvas 
+        self.canvas.groups.pop(item_id)
+        self.update_height()
+    
+    def handle_slider_change(self, item_id, slider_id, value): 
+        if not self.canvas.group: 
+            self.current_id = item_id
+            self.items[item_id].set_selected(True)
+            self.selection_changed.emit(item_id)
+            self.canvas.handle_group_select(item_id)
+
+        match slider_id: 
+            case 0: self.canvas.groups[item_id].update_bend_penalty(value) 
+            case 1: self.canvas.groups[item_id].update_hor_label(value) 
+            case 2: self.canvas.groups[item_id].update_same_side_label(value) 
+            
+        port_assign.assign_by_ilp(self.canvas.network)
+        layout.layout_lp(self.canvas.network)
+
+        self.canvas.groups[item_id].update_border()
+        self.canvas.groups[item_id].determine_pivot_buttons()
+
+        self.canvas.history_checkpoint(f"Assign ports locally (bend cost {value})")
+        self.canvas.render()
+    
+    def handle_slider_release(self): 
+        # needed such that we update the showing of labels also when we just release a slider
+        self.canvas.group.show_labels = False
+        self.canvas.render()
     
     def update_height(self):
-        total_height = 2 * self.frameWidth()
-        for i in range(self.count()):
-            total_height += self.sizeHintForRow(i)
-        self.setFixedHeight(total_height)
+        # Updates the height of the fixed height of the list 
+        total = self.layout.contentsMargins().top() + self.layout.contentsMargins().bottom()
 
-    def clear_current_selection(self):
-        self.clearSelection()
-        self.setCurrentItem(None)
+        for i in range(self.layout.count()):
+            item = self.layout.itemAt(i)
+            if item.widget():
+                w = item.widget()
+                w.adjustSize()
+                total += w.sizeHint().height()
+
+        total += (self.layout.count() - 1) * self.layout.spacing()
+        self.setFixedHeight(total)
