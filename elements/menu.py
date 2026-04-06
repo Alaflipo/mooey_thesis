@@ -1,12 +1,13 @@
-from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QFrame, QLabel, QCheckBox, QMessageBox, QDialog, QSlider, QComboBox, QButtonGroup, QScrollArea
-from PySide6.QtGui import Qt, QAction, QKeySequence, QPolygonF, QIcon
-from PySide6.QtCore import QPointF, QSize
+from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QFrame, QLabel, QCheckBox, QMessageBox, QDialog, QSlider, QComboBox, QButtonGroup, QScrollArea, QListWidget, QListWidgetItem, QToolButton
+from PySide6.QtGui import Qt, QAction, QKeySequence, QPolygonF, QIcon, QPixmap, QPainter, QColor
+from PySide6.QtCore import QPointF, QSize, Signal
 
 import datetime
 
 import pickle
 
 from elements.canvas import Canvas
+from elements.network import Node 
 from elements.bend_dialog import BendPenaltyDialog
 
 import helpers.port_assign as port_assign 
@@ -28,12 +29,12 @@ class MainWindow(QMainWindow):
         root.setSpacing(0)
 
         # --- Left scrollable menu ---
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        scroll.setMinimumWidth(180)
-        scroll.setMaximumWidth(220)
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.scroll_area.setMinimumWidth(200)
+        self.scroll_area.setMaximumWidth(220)
 
         sidebar = QWidget()
         button_layout = QVBoxLayout()
@@ -43,12 +44,12 @@ class MainWindow(QMainWindow):
         sidebar.setAutoFillBackground(True)
         
         sidebar.setLayout(button_layout)
-        scroll.setWidget(sidebar)
+        self.scroll_area.setWidget(sidebar)
 
         # --- Right canvas ---
         self.canvas = Canvas()
 
-        root.addWidget(scroll)
+        root.addWidget(self.scroll_area)
         root.addWidget(self.canvas) 
 
         self.methods = ["Rounding", "Matching", "Global"]
@@ -108,12 +109,16 @@ class MainWindow(QMainWindow):
 
         self.hor_buttons.buttonClicked.connect(self.selection_mode_changed)
 
+        # Color items representing each line 
         self.combo = QComboBox()
-        self.combo.addItems(self.canvas.network.lines.keys())
-        print(self.canvas.network.lines)
+        for color in self.canvas.network.lines.keys(): 
+            self.combo.addItem(self.make_color_icon("#" + color), 'metro-line')
         # self.combo.setCurrentIndex(self.method_choice)
         layout.addWidget(self.combo)
         self.combo.currentIndexChanged.connect(self.selection_line_changed)
+
+        item_list = SelectableItemList(self.canvas)
+        layout.addWidget(item_list)
 
         # Buttons to control port assignment methods 
         add_group_separator(layout)
@@ -176,6 +181,19 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.canvas.auto_render)
 
         self.dropdown_changed(self.method_choice)
+
+    def make_color_icon(self, color_hex, size=16):
+        pixmap = QPixmap(size, size)
+        pixmap.fill(Qt.transparent)
+
+        painter = QPainter(pixmap)
+        print(color_hex)
+        painter.setBrush(QColor(color_hex))
+        painter.setPen(Qt.black)
+        painter.drawRect(0, 0, size - 1, size - 1)
+        painter.end()
+
+        return QIcon(pixmap)
     
     def selection_mode_changed(self, button: QPushButton):
         self.canvas.selection_mode = [mode[0] for mode in self.selection_modes].index(button.property("mode"))
@@ -367,8 +385,6 @@ class MainWindow(QMainWindow):
         self.canvas.redo_action.setShortcut(QKeySequence('Ctrl+Shift+Z'))
         self.canvas.redo_action.triggered.connect(self.canvas.redo)
 
-
-
 def add_sidebar_button(layout, text, action):
     button = QPushButton(text)
     button.clicked.connect(action)
@@ -381,3 +397,107 @@ def add_group_separator(layout):
     line.setFrameShadow(QFrame.Sunken)
     layout.addWidget(line) 
       
+class ColorSquare(QWidget):
+    def __init__(self, color=None, parent=None):
+        super().__init__(parent)
+        self.color = color
+        self.setFixedSize(16, 16)
+
+    def paintEvent(self, event):
+        if not self.color:
+            return
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        rect = self.rect().adjusted(1, 1, -1, -1)
+
+        painter.setPen(Qt.black)  # border
+        painter.setBrush(QColor(self.color))
+        painter.drawRect(rect)
+
+
+class ListItemWidget(QWidget):
+    remove_clicked = Signal(object)
+
+    def __init__(self, text, item_id, color=None, parent=None):
+        super().__init__(parent)
+        self.item_id = item_id
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(8, 4, 4, 4)
+        layout.setSpacing(8)
+
+        if color:
+            self.icon_widget = ColorSquare(color)
+        else:
+            self.icon_widget = QWidget()
+            self.icon_widget.setFixedWidth(16)
+
+        self.label = QLabel(text)
+
+        self.remove_button = QToolButton()
+        self.remove_button.setText("×")
+        self.remove_button.setAutoRaise(True)
+        self.remove_button.clicked.connect(
+            lambda: self.remove_clicked.emit(self.item_id)
+        )
+
+        layout.addWidget(self.icon_widget)
+        layout.addWidget(self.label, 1)
+        layout.addWidget(self.remove_button)
+
+
+class SelectableItemList(QListWidget):
+    item_removed = Signal(object)
+
+    def __init__(self, canvas: Canvas, parent=None):
+        super().__init__(parent)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setSelectionMode(QListWidget.SingleSelection)
+        self.setUniformItemSizes(False)
+        self.setFocusPolicy(Qt.NoFocus)
+
+        self.canvas = canvas 
+
+        self.add_current_metro_lines()
+        self.itemSelectionChanged.connect(self.selection_changed)
+
+    def add_current_metro_lines(self): 
+        for color in self.canvas.network.lines: 
+            self.add_entry("Metro line", color, f"#{color}")
+        self.update_height()
+    
+    def selection_changed(self): 
+        print(self.itemWidget(self.currentItem()).item_id)
+
+    def add_entry(self, text, item_id, color=None):
+        list_item = QListWidgetItem(self)
+        widget = ListItemWidget(text, item_id, color)
+
+        list_item.setSizeHint(widget.sizeHint())
+        self.addItem(list_item)
+        self.setItemWidget(list_item, widget)
+
+        widget.remove_clicked.connect(self.remove_entry)
+
+    def remove_entry(self, item_id):
+        for row in range(self.count()):
+            list_item = self.item(row)
+            widget = self.itemWidget(list_item)
+            if widget and widget.item_id == item_id:
+                self.takeItem(row)
+                self.item_removed.emit(item_id)
+                self.update_height()
+                return
+    
+    def update_height(self):
+        total_height = 2 * self.frameWidth()
+        for i in range(self.count()):
+            total_height += self.sizeHintForRow(i)
+        self.setFixedHeight(total_height)
+
+    def clear_current_selection(self):
+        self.clearSelection()
+        self.setCurrentItem(None)

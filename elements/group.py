@@ -23,10 +23,12 @@ port_offset = [ QPointF(-1,0)
 
 class Group: 
 
-    def __init__(self, nodes: list[Node], conn_edges: list[Edge], conn_nodes: list[Node]):
+    def __init__(self, nodes: list[Node], conn_edges: list[Edge], conn_nodes: list[Node], name: str = '', color = None):
         self.nodes: list[Node] = nodes 
         self.conn_edges: list[Edge] = conn_edges
         self.conn_nodes: list[Node] = conn_nodes
+        self.name: str = name 
+        self.color: str | None = color
 
         self.button_size = 20
 

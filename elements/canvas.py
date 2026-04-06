@@ -62,23 +62,24 @@ class Canvas(QWidget):
         self.network.calculate_mid_point()
         self.network.find_min_max_geo()
         self.network.divide_in_lines()
-
+       
         self.label_dist:int = 25
 
         self.affected_nodes: list[Node] = []
         
         self.selection_path: QPolygonF = QPolygonF()
         self.brush: QPainterPath = QPainterPath()
-        self.group: Group | None = None
-
+        
         self.drag_group: bool = False
         self.move_group: bool = False 
         self.expand_group: bool = False 
         self.lock_group: bool = False 
         self.label_group: bool = False 
         self.pivot_group: int | None = None 
-        
 
+        self.groups: list[Group] = self.create_groups()
+        self.group: Group | None = None
+        
         # 0 = square, 1 = lasso, 2 = brush, 3 = line 
         self.selection_mode: int = 1
         self.color_selected: None | str = None 
@@ -148,6 +149,26 @@ class Canvas(QWidget):
             p = self.view.map(v.pos).toPoint()
             if rect.contains(p): return False
         return True
+    
+    def create_groups(self): 
+        groups: list[Group] = []
+        for i, color in enumerate(self.network.lines): 
+            nodes = self.network.lines[color]
+            outsider_edges: list[Edge] = []
+            outsider_nodes: list[Node] = []
+
+            # Find an edge that connects the group to a node outside the group
+            for v in nodes:
+                for e in v.edges:
+                    other_node = e.other(v)
+                    if other_node not in nodes:
+                        outsider_edges.append(e)
+                        outsider_nodes.append(other_node)
+
+            # Create a group 
+            groups.append(Group(nodes, outsider_edges, outsider_nodes, name=f'metro-line {i}', color=f'#{color}'))
+
+        return groups 
 
 
     # Forward every mouse event to the function handle_mouse 
