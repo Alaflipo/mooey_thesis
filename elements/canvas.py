@@ -75,7 +75,7 @@ class Canvas(QWidget):
         self.expand_group: bool = False 
         self.lock_group: bool = False 
         self.label_group: bool = False 
-        self.bend_group: bool = False 
+        self.shape_group: bool = False 
         self.pivot_group: int | None = None 
 
         self.groups: dict[str, Group] = {}
@@ -260,8 +260,7 @@ class Canvas(QWidget):
                 resolve_shift = layout_lp(self.network, self.label_dist, ui.hover_node)
 
                 if self.group: 
-                    self.group.update_border()
-                    self.group.determine_pivot_buttons()
+                    self.group.update_group()
 
                     #### Do we want to move with the button??? 
                     # if self.group and self.pivot_group != None: 
@@ -557,8 +556,8 @@ class Canvas(QWidget):
             self.expand_group = True
         elif self.group and self.group.has_point_in_lock(self.mouse_pos): 
             self.lock_group = True 
-        elif self.group and self.group.has_point_in_bend(self.mouse_pos): 
-            self.bend_group = True 
+        elif self.group and self.group.has_point_in_shape(self.mouse_pos): 
+            self.shape_group = True 
         elif self.group and self.group.has_point_in_label_button(self.mouse_pos) != None: 
             self.label_group = True 
         else: 
@@ -588,10 +587,9 @@ class Canvas(QWidget):
         if self.group and self.lock_group: 
             locked = self.group.toggle_lock()
             self.network_change = 'unlocked group' if locked else 'locked group'
-        if self.group and self.bend_group: 
-            self.group.bend()
-            pa.assign_by_ilp(self.network)
-            self.network_change = 'added bend'
+        if self.group and self.shape_group: 
+            success = self.group.create_shape()
+            if success: self.network_change = 'changed shape'
 
         if self.group and self.label_group and self.group.hover_label_port != None: 
             
@@ -659,7 +657,7 @@ class Canvas(QWidget):
             self.move_group = False 
             self.expand_group = False 
             self.lock_group = False 
-            self.bend_group = False 
+            self.shape_group = False 
             self.label_group = False 
             self.pivot_group = None 
             return 
@@ -709,7 +707,7 @@ class Canvas(QWidget):
             # brush mode: collect all nodes inside the brush 
             path = QPainterPath()
 
-            radius = 50
+            radius = 40
             for point in self.selection_path.toList():
                 circle = QPainterPath()
                 circle.addEllipse(point, radius, radius)
@@ -882,7 +880,7 @@ class Canvas(QWidget):
         self.expand_group = False
         self.pivot_group = None 
         self.drag_group = False 
-        self.bend_group = False
+        self.shape_group = False
         self.lock_group = False 
         self.group = None 
         self.selection_path = QPolygonF()
@@ -892,8 +890,8 @@ class Canvas(QWidget):
 
         # then update the group 
         self.group = self.groups[id]
-        self.group.update_border()
-        self.group.determine_pivot_buttons()
+        print('helloo?')
+        self.group.update_group()
     
     def handle_scale_at(self, mouse_pos, scale):
         pos = self.worldspace(mouse_pos)

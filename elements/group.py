@@ -6,8 +6,13 @@ from PySide6.QtCore import QPointF, QRectF, QLineF
 from shapely.geometry import LineString, MultiLineString
 from shapely.ops import unary_union, polygonize
 
+from collections import deque
+
 from elements.network import Node, Edge
 from math import sqrt
+
+def opposite_port( p ):
+    return (p+4)%8
 
 diag = 1/sqrt(2)
 
@@ -40,7 +45,7 @@ class Group:
         self.expand_button_pos: QPointF | None = None 
         self.lock_button_pos: QPointF | None = None 
         self.label_button_pos: QPointF | None = None 
-        self.bend_button_pos: QPointF | None = None 
+        self.shape_button_pos: QPointF | None = None 
 
         self.label_port_active: int | None = None 
         self.hover_label_port: int | None = None 
@@ -52,9 +57,14 @@ class Group:
 
         self.show_labels: bool = False 
 
+        self.deg_2 = self.is_deg_2()
+        self.circular = self.is_circular()
+
+        self.update_group()
+
+    def update_group(self): 
         self.update_border()
         self.determine_pivot_buttons()
-
 
     def can_be_moved(self) -> bool: 
         return len(self.conn_nodes) > 0
@@ -72,8 +82,8 @@ class Group:
         dist = QVector2D(self.lock_button_pos - point).length()
         return dist < self.button_size
 
-    def has_point_in_bend(self, point) -> bool: 
-        dist = QVector2D(self.bend_button_pos - point).length()
+    def has_point_in_shape(self, point) -> bool: 
+        dist = QVector2D(self.shape_button_pos - point).length()
         return dist < self.button_size
     
     def has_point_in_pivot_button(self, point) -> bool: 
@@ -114,13 +124,13 @@ class Group:
         self.show_labels = False 
     
     def update_hor_label(self, value): 
-        self.bend_pentalty = value
+        self.label_hor = value
         for node in self.nodes: 
             node.label_hor = value 
         self.show_labels = True 
 
     def update_same_side_label(self, value): 
-        self.bend_pentalty = value
+        self.label_same_side = value
         for node in self.nodes: 
             node.label_same_side = value 
         self.show_labels = True 
@@ -234,16 +244,157 @@ class Group:
                 v.assign_label(self.label_port_active)
         return self.label_port_active
     
-    def bend(self): 
+    def amount_internal_edges(self, node: Node): 
+        amount = 0 
+        for edge in node.edges: 
+            if edge in self.internal_edges: 
+                amount += 1
+        return amount 
+    
+    def create_shape(self): 
+        success = False 
+        if self.deg_2: 
+            success = self.straighten()
+        elif self.circular: 
+            success = self.circlelize()
+        return success
+
+    def is_deg_2(self): 
+        end_points = 0 
         for node in self.nodes: 
-            node.bend_penalty += 1
+            if len(self.internal[node]) > 2 or len(self.internal[node]) <= 0: 
+                return False 
+            if len(self.internal[node]) == 1: 
+                end_points += 1 
+            if end_points > 2: return False 
+        if end_points != 2: return False 
+        return True 
+    
+    def is_circular(self): 
+        # every node must have degree 2
+        for node in self.nodes:
+            if len(self.internal[node]) != 2:
+                return False
+            
+        # check if it is connected
+        visited = set()
+        q = deque([self.nodes[0]])
+        
+        while q:
+            node = q.popleft()
+            if node in visited:
+                continue
+            visited.add(node)
+            for edge in self.internal[node]:
+                other = edge.other(node)
+                if other not in visited:
+                    q.append(other)
+        
+        return len(visited) == len(self.nodes)
+    
+
+    def straighten(self): 
+        ports: dict[int, list[Edge]] = {}
+        for edge in self.internal_edges: 
+            port1 = edge.port_at(edge.v[0])
+            port2 = edge.port_at(edge.v[1])
+            min_port = min(port1, port2)
+            if min_port in ports: 
+                ports[min_port].append(edge)
+            else: 
+                ports[min_port] = [edge]
+        max_port = max(ports, key=lambda port: len(ports[port]))
+        common_edge = ports[max_port][0]
+
+        for node in common_edge.v: 
+            print(node.label_node.label_text)
+            edge = common_edge
+            port = edge.port_at(node)
+            print(port)
+       
+            label_port = node.label_node.port 
+
+            # If the label is in the direction of the straigten call we choose a different port 
+            if label_port == opposite_port(port): 
+                label_port = node.first_free_port(exceptions=[label_port])
+            v = edge.other(node)
+            v.assign_label(label_port)
+
+            while v in self.nodes and self.amount_internal_edges(v) >= 2:
+                prev_e = edge
+                for e in v.edges: 
+                    if e in self.internal_edges and e != prev_e: 
+                        edge = e
+                        break 
+                # Make sure that the label port is reassigned to the port position of the first vertex in the straigten call
+                edge.other(v).assign_label(label_port)
+                v.assign_both_ends(edge,port,force=False)
+                v.lock()
+                v = edge.other(v)
+                v.lock()
+        return True 
+
+    def generate_circle_sequence(self, length):
+        # the port sequence of the first 8 nodes
+        base_seq = [
+            [4,1,7], 
+            [4,6,0,2],
+            [4,5,7,1,3], 
+            [4,5,7,0,1,3], 
+            [4,5,6,7,1,2,3],
+            [4,5,6,7,0,1,2,3],
+        ]
+        if length <= 8: 
+            return base_seq[length - 3]
+        
+        # from here there is a logical sequence to follow 
+        base = base_seq[5]
+        dup_order = [4, 0, 6, 2, 5, 1, 7, 3]
+        
+        seq = base.copy()
+        i = 0
+        
+        while len(seq) < length:
+            val = dup_order[i % len(dup_order)]
+            idx = seq.index(val)
+            seq.insert(idx, val)
+            i += 1
+        
+        return seq[:length]
+
+    def circlelize(self): 
+        min_nodes = [self.nodes[0]]
+        for node in self.nodes[1:]: 
+            if node.pos.y() > min_nodes[0].pos.y(): 
+                min_nodes = [node]
+            elif node.pos.y() == min_nodes[0].pos.y(): 
+                min_nodes.append(node)
+        
+        left_node = min(min_nodes, key=lambda node: node.pos.x())
+        right_edge = min(self.internal[left_node], key=lambda edge: abs(self.circular_diff(4, edge.port_at(left_node))))
+
+        sequence = self.generate_circle_sequence(len(self.nodes))
+        print(sequence, len(self.nodes))
+
+        node = left_node 
+        edge = right_edge 
+        for port in sequence: 
+            node.assign_both_ends(edge,port,force=False)
+            node = edge.other(node)
+            edge = self.internal[node][0] if self.internal[node][0] != edge else self.internal[node][1]
+
+        return True 
 
     def find_all_edges(self) -> list[Edge]:
         edges: list[Edge] = []
+        self.internal : dict[Node, list[Edge]] = {}
         for node in self.nodes: 
+            self.internal[node] = []
             for edge in node.edges: 
-                if edge not in edges and edge not in self.conn_edges: 
-                    edges.append(edge)
+                if edge.other(node) in self.nodes: 
+                    self.internal[node].append(edge)
+                    if edge not in edges: 
+                        edges.append(edge)
         return edges 
     
     def update_border(self): 
@@ -256,24 +407,33 @@ class Group:
             self.expand_button_pos = QPointF(self.bounding_rect.topRight().x() + 60, self.bounding_rect.topRight().y() - 60)
         self.lock_button_pos = QPointF(self.bounding_rect.center().x() - 50, self.bounding_rect.bottom() + 60)
         self.label_button_pos = QPointF(self.bounding_rect.center().x(), self.bounding_rect.bottom() + 60)
-        self.bend_button_pos = QPointF(self.bounding_rect.center().x() + 50, self.bounding_rect.bottom() + 60)
+        self.shape_button_pos = QPointF(self.bounding_rect.center().x() + 50, self.bounding_rect.bottom() + 60)
 
-        lines: list[LineString] = [LineString([edge.v[0].pos.toTuple(), edge.v[1].pos.toTuple()]) for edge in self.internal_edges]
+        lines: list[LineString] = []
+        for edge in self.internal_edges: 
+            if edge.bend: 
+                lines.append(LineString([edge.v[0].pos.toTuple(), edge.bend.toTuple()]))
+                lines.append(LineString([edge.v[1].pos.toTuple(), edge.bend.toTuple()]))
+            else: 
+                lines.append(LineString([edge.v[0].pos.toTuple(), edge.v[1].pos.toTuple()]))
 
-        merged = unary_union(lines)    # merge all lines
-        corridor = merged.buffer(50)   # width around lines
+        buffered = [line.buffer(30, cap_style=1, join_style=1) for line in lines]
+        geom = unary_union(buffered)
 
-        if corridor.geom_type == "Polygon":
-            border = corridor.exterior
-        elif corridor.geom_type == "MultiPolygon":
-            border = [poly.exterior for poly in corridor.geoms]
-
-        polygons = list(polygonize(border))
-  
         self.border = []
-        for poly in polygons:
-            qpoly = QPolygonF([QPointF(x, y) for x, y in poly.exterior.coords])
-            self.border.append(qpoly)
+
+        shape_list = [geom]
+        if geom.geom_type == "MultiPolygon":
+            shape_list = geom.geoms
+            
+        for i, poly in enumerate(shape_list):
+            shell = list(poly.exterior.coords)
+            holes = [list(ring.coords) for ring in poly.interiors]
+ 
+            border_part = [QPolygonF([QPointF(x, y) for x, y in shell])]
+            for hole in holes: 
+                border_part.append(QPolygonF([QPointF(x, y) for x, y in hole]))
+            self.border.append(border_part)
 
     def determine_pivot_buttons(self): 
         self.pivot_buttons_pos = []

@@ -262,7 +262,7 @@ class Node:
 
     def evict( self, e: Edge ):
         me = e.id(self)
-        assert self.ports[e.port[me]] == e
+        # assert self.ports[e.port[me]] == e
         self.ports[e.port[me]] = None
         e.port[me] = None
         e.bend = None

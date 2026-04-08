@@ -53,7 +53,7 @@ class MainWindow(QMainWindow):
         root.addWidget(self.canvas) 
 
         self.methods = ["Rounding", "Matching", "Global"]
-        self.method_choice: int = 1 
+        self.method_choice: int = 2
         self.sliders = [[], [], [], []]
         self.slider_values = [[], [], [], []]
 
@@ -73,14 +73,69 @@ class MainWindow(QMainWindow):
     
     def construct_sidebar(self, layout):
 
-        # Buttons to control the view 
+        #### PORT ASSIGNMENT
+
+        # Buttons to control port assignment methods 
         add_group_separator(layout)
-        layout.addWidget(QLabel("View"))
-        add_sidebar_button(layout, "Zoom to fit", lambda: self.do_zoom_to_fit())
-        self.canvas.show_background = QCheckBox("Show Original")
-        self.canvas.show_background.setChecked(False)
-        self.canvas.show_background.clicked.connect(lambda: self.canvas.render())
-        layout.addWidget(self.canvas.show_background)
+        layout.addWidget(QLabel("Port assignment"))
+        
+        # Dropdown
+        self.combo = QComboBox()
+        self.combo.addItems(self.methods)
+        self.combo.setCurrentIndex(self.method_choice)
+        layout.addWidget(self.combo)
+        self.combo.currentIndexChanged.connect(self.dropdown_changed)
+
+        # General sliders 
+
+        # sliders rounding method 
+
+        # sliders matching method
+        self.add_slider(layout, "Label Horizontal Weight", 0, 200, 0, slider_set=2)
+
+        # sliders global method
+        self.add_slider(layout, "Bend penalty", 0, 50, 0, slider_set=3, tick_size=0.1)
+        self.add_slider(layout, "Label Horizontal Weight", 0, 200, 0, slider_set=3)
+        self.add_slider(layout, "Label Same-Side Weight", 0, 100, 0, slider_set=3)
+
+        # Exectue chosen method 
+        # add_sidebar_button(layout, "GO!", lambda: self.do_port_assign())
+        
+        # Auto update port assignment 
+        self.auto_update_port = QCheckBox("Auto-update Ports")
+        self.auto_update_port.setChecked(True)
+        # layout.addWidget(self.auto_update_port)
+
+        # evict port assignment choice 
+        # add_sidebar_button(layout, "Evict all", lambda: self.do_assign_reset())
+
+
+        #### LAYOUT ALGO 
+
+        # Buttons to control the layout algorithm
+        add_group_separator(layout)
+        layout.addWidget(QLabel("Layout"))
+
+        # general slider
+        self.add_slider(layout, "Label distance", 0, 50, 25, slider_set=0)
+        self.add_slider(layout, "Min edge distance", 0, 150, 100, slider_set=0)
+
+        # add_sidebar_button(layout, "Update layout", lambda: self.do_layout())
+
+        self.canvas.auto_update = QCheckBox("Auto-update")
+        self.canvas.auto_update.setChecked(True)
+        layout.addWidget(self.canvas.auto_update)
+        # add_sidebar_button(layout, "Reset", lambda: self.do_reset_layout())
+
+        add_sidebar_button(layout, "GO!", lambda: self.do_port_assign())
+
+        ### POST FIX LABELING
+
+        add_group_separator(layout)
+        layout.addWidget(QLabel("Labels"))
+        add_sidebar_button(layout, "Fix label overlap", lambda: self.do_fix_label_overlap())
+
+        #### SELECTION METHODS 
 
         add_group_separator(layout)
         layout.addWidget(QLabel("Selection method"))
@@ -109,70 +164,10 @@ class MainWindow(QMainWindow):
 
         self.hor_buttons.buttonClicked.connect(self.selection_mode_changed)
 
-        ## OLD METHOD 
-        # self.combo = QComboBox()
-        # for color in self.canvas.network.lines.keys(): 
-        #     self.combo.addItem(self.make_color_icon("#" + color), 'metro-line')
-        # # self.combo.setCurrentIndex(self.method_choice)
-        # layout.addWidget(self.combo)
-        # self.combo.currentIndexChanged.connect(self.selection_line_changed)
-
         # Color items representing each line 
         self.group_list = GroupList(self.canvas, select_buttons=self.hor_buttons)
         layout.addWidget(self.group_list)
         add_sidebar_button(layout, "Add Group", self.add_group_selection)
-
-        # Buttons to control port assignment methods 
-        add_group_separator(layout)
-        layout.addWidget(QLabel("Port assignment"))
-        
-        # Dropdown
-        self.combo = QComboBox()
-        self.combo.addItems(self.methods)
-        self.combo.setCurrentIndex(self.method_choice)
-        layout.addWidget(self.combo)
-        self.combo.currentIndexChanged.connect(self.dropdown_changed)
-
-        # General sliders 
-
-        # sliders rounding method 
-
-        # sliders matching method
-        self.add_slider(layout, "Label Horizontal Weight", 0, 200, 0, slider_set=2)
-
-        # sliders global method
-        self.add_slider(layout, "Bend penalty", 0, 50, 0, slider_set=3, tick_size=0.1)
-        self.add_slider(layout, "Label Horizontal Weight", 0, 200, 0, slider_set=3)
-        self.add_slider(layout, "Label Same-Side Weight", 0, 100, 0, slider_set=3)
-
-        # Exectue chosen method 
-        add_sidebar_button(layout, "GO!", lambda: self.do_port_assign())
-        
-        # Auto update port assignment 
-        self.auto_update_port = QCheckBox("Auto-update Ports")
-        self.auto_update_port.setChecked(True)
-        layout.addWidget(self.auto_update_port)
-
-        # evict port assignment choice 
-        add_sidebar_button(layout, "Evict all", lambda: self.do_assign_reset())
-
-        # Buttons to control the layout algorithm
-        add_group_separator(layout)
-        layout.addWidget(QLabel("Layout"))
-
-        # general slider
-        self.add_slider(layout, "Label distance", 0, 50, 25, slider_set=0)
-        self.add_slider(layout, "Min edge distance", 0, 150, 100, slider_set=0)
-
-        add_sidebar_button(layout, "Update layout", lambda: self.do_layout())
-        self.canvas.auto_update = QCheckBox("Auto-update")
-        self.canvas.auto_update.setChecked(True)
-        layout.addWidget(self.canvas.auto_update)
-        add_sidebar_button(layout, "Reset", lambda: self.do_reset_layout())
-
-        add_group_separator(layout)
-        layout.addWidget(QLabel("Labels"))
-        add_sidebar_button(layout, "Fix label overlap", lambda: self.do_fix_label_overlap())
 
         # Buttons to control the rendering
         add_group_separator(layout)
@@ -182,8 +177,17 @@ class MainWindow(QMainWindow):
         self.canvas.auto_render.setChecked(False)
         layout.addWidget(self.canvas.auto_render)
 
+        # Buttons to control the view 
+        add_group_separator(layout)
+        layout.addWidget(QLabel("View"))
+        add_sidebar_button(layout, "Zoom to fit", lambda: self.do_zoom_to_fit())
+        self.canvas.show_background = QCheckBox("Show Original")
+        self.canvas.show_background.setChecked(False)
+        self.canvas.show_background.clicked.connect(lambda: self.canvas.render())
+        layout.addWidget(self.canvas.show_background)
+
         self.dropdown_changed(self.method_choice)
-    
+
     def selection_mode_changed(self, button: QPushButton):
         self.group_list.clear_selection()
         button.setChecked(True)
@@ -210,9 +214,9 @@ class MainWindow(QMainWindow):
         slider.setMinimum(min)
         slider.setMaximum(max)
         slider.setValue(value)
-        slider.setTickPosition(QSlider.TicksBelow)
-        slider.setTickInterval(1)
-        slider.setFixedWidth(200)
+        # slider.setTickPosition(QSlider.TicksBelow)
+        # slider.setTickInterval(1)
+        # slider.setFixedWidth(200)
         slider_index = len(self.sliders[slider_set])
         slider.valueChanged.connect(lambda x: self.update_slider_value(x, slider_set, slider_index, tick_size))
         layout.addWidget(slider)
@@ -636,8 +640,7 @@ class GroupList(QListWidget):
         port_assign.assign_by_ilp(self.canvas.network)
         layout.layout_lp(self.canvas.network)
 
-        self.canvas.groups[item_id].update_border()
-        self.canvas.groups[item_id].determine_pivot_buttons()
+        self.canvas.groups[item_id].update_group()
 
         self.canvas.history_checkpoint(f"Assign ports locally (bend cost {value})")
         self.canvas.render()

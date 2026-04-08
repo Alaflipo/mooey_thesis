@@ -210,6 +210,17 @@ def render_highlighted_nodes(painter: QPainter, nodes: list[Node]):
     for node in nodes: 
         painter.drawEllipse(node.pos, 10, 10)
 
+def polygon_with_holes(outer, holes=None):
+    holes = holes if holes else []
+
+    path = QPainterPath()
+    path.setFillRule(Qt.FillRule.OddEvenFill)
+    path.addPolygon(outer)
+
+    for hole in holes:
+        path.addPolygon(hole)
+    return path
+
 def render_group(painter: QPainter, group: Group,  move_group: bool, pivot_group: None | int): 
     ui.lasso_pen.setStyle(Qt.SolidLine)
     painter.setBrush(QBrush(QColor(200,10,10,100)))
@@ -218,13 +229,14 @@ def render_group(painter: QPainter, group: Group,  move_group: bool, pivot_group
     # draw border 
     if group.hover_label_port == None and not group.show_labels: 
         for border_part in group.border: 
-            painter.drawPolygon(border_part)
+            path = polygon_with_holes(border_part[0], border_part[1:])
+            painter.drawPath(path)
     
     # painter.drawRect(group.bounding_rect)
 
     painter.setPen(ui.button_pen)
     # draw pivot buttons 
-    if not move_group and group.hover_label_port == None and not group.show_labels: 
+    if not move_group and group.hover_label_port == None and not group.show_labels and len(group.pivot_buttons_pos) <= 5: 
         for i, button in enumerate(group.pivot_buttons_pos): 
             if type(pivot_group) == int and pivot_group != i: continue  
             painter.setBrush(QBrush(QColor('lightgreen')))
@@ -261,11 +273,12 @@ def render_group(painter: QPainter, group: Group,  move_group: bool, pivot_group
             renderer.render(painter, QRectF(lock_but.x() - 10, lock_but.y() - icon_size/2, icon_size, icon_size))
 
             # For bend button 
-            bend_but = group.bend_button_pos
-            painter.drawEllipse(bend_but, group.button_size, group.button_size)
-            renderer = QSvgRenderer("assets/lock.svg")
-            icon_size = group.button_size
-            renderer.render(painter, QRectF(bend_but.x() - 10, bend_but.y() - icon_size/2, icon_size, icon_size))
+            if group.deg_2 or group.circular:  
+                shape_but = group.shape_button_pos
+                painter.drawEllipse(shape_but, group.button_size, group.button_size)
+                renderer = QSvgRenderer("assets/circle.svg" if group.circular else "assets/line.svg")
+                icon_size = group.button_size
+                renderer.render(painter, QRectF(shape_but.x() - 10, shape_but.y() - icon_size/2, icon_size, icon_size))
 
         # For label button 
         label_but = group.label_button_pos
