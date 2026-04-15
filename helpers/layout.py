@@ -16,8 +16,9 @@ bend_short = 0.5
 bend_long = 1
 
 def layout_lp( net: Network, label_dist:int = 20, stable_node:Node = None ):
-    
 
+    if not net.ports_set(): return False
+    
     start = perf_counter()
     solver: lp.Solver = lp.Solver.CreateSolver('GLOP')
 
@@ -42,29 +43,30 @@ def layout_lp( net: Network, label_dist:int = 20, stable_node:Node = None ):
                 continue # Unconstrained edge
             else:
                 # Edge is assigned at v1
-                objective += edge_constraint( solver, objective, e.v[1], e.port[1], e.v[0], e.min_dist )
+                objective += edge_constraint_v2( solver, objective, e.v[1], e.port[1], e.v[0], e.min_dist, e.max_dist )
         else:
             if e.port[1] is None:
                 # Edge is assigned at v0
-                objective += edge_constraint( solver, objective, e.v[0], e.port[0], e.v[1], e.min_dist )
+                objective += edge_constraint_v2( solver, objective, e.v[0], e.port[0], e.v[1], e.min_dist, e.max_dist )
             else:
                 # Edge is assigned at both ends; could have a bend
                 if e.port[0]==opposite_port(e.port[1]):
                     # No bend; do arbitrary direction
-                    objective += edge_constraint( solver, objective, e.v[0], e.port[0], e.v[1], e.min_dist )
+                    objective += edge_constraint_v2( solver, objective, e.v[0], e.port[0], e.v[1], e.min_dist, e.max_dist )
                 else:
                     # Bend
                     e.bend = Node(0,0,f"bend-{e.v[0].name}-{e.v[1].name}")
                     e.bend.xvar = solver.NumVar(0,solver.infinity(), v.name+'_x')
                     e.bend.yvar = solver.NumVar(0,solver.infinity(), v.name+'_y')
-                    objective += edge_constraint( solver, objective, e.v[0], e.port[0], e.bend, e.min_dist*bend_length( e, 0 ) )
-                    objective += edge_constraint( solver, objective, e.v[1], e.port[1], e.bend, e.min_dist*bend_length( e, 1 ) )
+                    objective += edge_constraint_v2( solver, objective, e.v[0], e.port[0], e.bend, e.min_dist*bend_length( e, 0 ), e.max_dist )
+                    objective += edge_constraint_v2( solver, objective, e.v[1], e.port[1], e.bend, e.min_dist*bend_length( e, 1 ), e.max_dist )
 
 
     for v in net.nodes.values(): 
         v.label_node.xvar = solver.NumVar(0, solver.infinity(), v.name+'_label_x')
         v.label_node.yvar = solver.NumVar(0, solver.infinity(), v.name+'_label_x')
-        objective += edge_constraint( solver, objective, v, v.label_node.port, v.label_node, v.label_node.text_width + label_dist)
+        if v.label_node.port != None: 
+            objective += edge_constraint( solver, objective, v, v.label_node.port, v.label_node, v.label_node.text_width + label_dist)
 
     # Space the stations on degree 2 paths
     seen = dict()
@@ -89,8 +91,11 @@ def layout_lp( net: Network, label_dist:int = 20, stable_node:Node = None ):
     status = solver.Solve()
     if status==lp.Solver.OPTIMAL:
         runtime = perf_counter()-start
-        # print( "layout\tLayout LP runtime (s)\t" + str(runtime) )
-        # print( "Layout LP runtime",perf_counter()-start,"s")
+        print( "layout\tLayout LP runtime (s)\t" + str(runtime) )
+        print( "Layout LP runtime",perf_counter()-start,"s")
+
+        net.layout_set = True 
+
         for v in net.nodes.values():
             v.set_position( v.xvar.solution_value(), v.yvar.solution_value() )
             if v.label_node: v.label_node.set_position( v.label_node.xvar.solution_value(), v.label_node.yvar.solution_value() )
@@ -102,7 +107,6 @@ def layout_lp( net: Network, label_dist:int = 20, stable_node:Node = None ):
                 # Bend was a Node for solving; reduce it to a point
                 e.bend = QPointF( e.bend.xvar.solution_value(), e.bend.yvar.solution_value() )
 
-        print(stable_node)
         if stable_node is not None: return stable_node.pos - old_stable_pos
         else: return None
     else:
@@ -153,6 +157,47 @@ def edge_constraint( solver, objective, a, port, b, min_dist ):
             solver.Add( a.xvar-a.yvar == b.xvar-b.yvar )
             solver.Add( b.xvar <= a.xvar - diag*min_dist )
             return 2*diag*a.xvar - 2*diag*b.xvar
+        
+def edge_constraint_v2(solver, objective, a, port, b, min_dist=None, max_dist=None):
+    match port:
+        case 0:  # W
+            solver.Add(a.yvar == b.yvar)
+            dist = a.xvar - b.xvar
+
+        case 1:  # SW
+            solver.Add(a.xvar + a.yvar == b.xvar + b.yvar)
+            dist = 2 * diag * (a.xvar - b.xvar)
+
+        case 2:  # S
+            solver.Add(a.xvar == b.xvar)
+            dist = b.yvar - a.yvar
+
+        case 3:  # SE
+            solver.Add(a.xvar - a.yvar == b.xvar - b.yvar)
+            dist = 2 * diag * (b.xvar - a.xvar)
+
+        case 4:  # E
+            solver.Add(a.yvar == b.yvar)
+            dist = b.xvar - a.xvar
+
+        case 5:  # NE
+            solver.Add(a.xvar + a.yvar == b.xvar + b.yvar)
+            dist = 2 * diag * (b.xvar - a.xvar)
+
+        case 6:  # N
+            solver.Add(a.xvar == b.xvar)
+            dist = a.yvar - b.yvar
+
+        case 7:  # NW
+            solver.Add(a.xvar - a.yvar == b.xvar - b.yvar)
+            dist = 2 * diag * (a.xvar - b.xvar)
+
+    if min_dist is not None:
+        solver.Add(dist >= min_dist)
+    if max_dist is not None:
+        solver.Add(dist <= max_dist)
+
+    return dist
 
 long_bends = { (1,1), (2,1), (3,1)
              , (1,2), (2,2)
@@ -181,8 +226,10 @@ def bend_angle( p, q ):
     return min( (p-q)%8, (q-p)%8 )
 
 
-def is_straight_deg2(v):
-    return len(v.edges)==2 and v.edges[0].port_at(v)==opposite_port(v.edges[1].port_at(v))
+def is_straight_deg2(v: Node):
+    if len(v.edges) != 2: return False 
+    if v.edges[0].port_at(v) == None or v.edges[1].port_at(v) == None: return False 
+    return v.edges[0].port_at(v)==opposite_port(v.edges[1].port_at(v))
 
 def spacewalk( v, prev, seen ):
     # Find maximal degree 2 path for spacer variable

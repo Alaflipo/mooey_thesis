@@ -46,6 +46,7 @@ class Canvas(QWidget):
         self.history: list[tuple[str, Network]] = []
         self.history_index = -1
         self.station_added = 0
+        self.there_was_change = False 
 
         # UI state
         self.old_mouse = None
@@ -160,21 +161,12 @@ class Canvas(QWidget):
         return True 
 
     def create_groups_from_lines(self): 
+        self.groups = {}
         for i, color in enumerate(self.network.lines): 
             nodes = self.network.lines[color]
-            outsider_edges: list[Edge] = []
-            outsider_nodes: list[Node] = []
-
-            # Find an edge that connects the group to a node outside the group
-            for v in nodes:
-                for e in v.edges:
-                    other_node = e.other(v)
-                    if other_node not in nodes:
-                        outsider_edges.append(e)
-                        outsider_nodes.append(other_node)
 
             # Create a group 
-            self.groups[color] = Group(nodes, outsider_edges, outsider_nodes, name=f'metro-line {i}', color=f'#{color}')
+            self.groups[color] = Group(nodes, name=color, color=f'#{color}')
 
 
     # Forward every mouse event to the function handle_mouse 
@@ -255,6 +247,7 @@ class Canvas(QWidget):
                 
         ### Did we do anything? Then solve and render as appropriate, and to undo buffer
         if self.network_change is not None:
+            self.there_was_change = self.network_change 
             if self.auto_update.isChecked():
                 # this is for calculating the new mouse placement after a shift happened while dragging. 
                 resolve_shift = layout_lp(self.network, self.label_dist, ui.hover_node)
@@ -271,6 +264,10 @@ class Canvas(QWidget):
                 if resolve_shift and not self.drag: 
                     self.view.translate(-resolve_shift.x(), -resolve_shift.y())
 
+                # This is just so the 'drag one node' behaviour works properly again (was removed for some reason)
+                elif self.network_change[0:4] == 'drag' and ui.drag_node and len(ui.drag_node.edges) != 1: 
+                    self.view.translate(self.mouse_pos.x() - ui.drag_node.pos.x(), self.mouse_pos.y() - ui.drag_node.pos.y())
+
                 if resolve_shift is False:
                     print('no shift')
                     m = QMessageBox()
@@ -284,34 +281,10 @@ class Canvas(QWidget):
                         render_loom( "render.json", "render.svg" )
                     if self.show_background.isChecked(): 
                         self.network.set_background_image()
-                
-                # if resolve_shift and not self.drag_group:
-                #     if self.network_change[0:4] == 'drag' and ui.drag_node: 
-                #         print('drag')
-                #         # we translate to the node that we were dragging 
-                #         if len(ui.drag_node.edges) == 1: 
-                #             neighbour = ui.drag_node.edges[0].other(ui.drag_node)
-                #             opposite_port = ui.drag_node.edges[0].port_at(neighbour)
-                #             how_far = 2
-                #             shift = ui.drag_node.pos + (how_far * min_edge_scale) * port_offset[opposite_port]
-                #             self.view.translate(self.mouse_pos.x() - shift.x(), self.mouse_pos.y() - shift.y())
-                #         else: 
-                #             self.view.translate(self.mouse_pos.x() - ui.drag_node.pos.x(), self.mouse_pos.y() - ui.drag_node.pos.y())
-                #     else: 
-                #         print('no drag?')
-                #         self.view.translate(-resolve_shift.x(), -resolve_shift.y())
-                #     self.network.set_background_image()
-                #     if self.auto_render.isChecked():
-                #         export_loom(self.network,self.filedata)
-                #         render_loom( "render.json", "render.svg" )
-                # elif resolve_shift is False:
-                #     print('no shift')
-                #     m = QMessageBox()
-                #     m.setText("Failed to realise layout.")
-                #     m.setIcon(QMessageBox.Warning)
-                #     m.setStandardButtons(QMessageBox.Ok)
-                #     m.exec()
-            self.history_checkpoint( self.network_change )
+
+        if release and self.there_was_change:
+            self.history_checkpoint( self.there_was_change )
+            self.there_was_change = False          
 
         ### Remember mouse position for next time and redraw.
         self.old_mouse = event.position()
@@ -723,16 +696,8 @@ class Canvas(QWidget):
         # If no nodes are found in the lasso we do not proceed 
         if len(nodes_in_selection) < 1: return 
 
-        # Find an edge that connects the group to a node outside the group
-        for v in nodes_in_selection:
-            for e in v.edges:
-                other_node = e.other(v)
-                if other_node not in nodes_in_selection:
-                    outsider_edges.append(e)
-                    outsider_nodes.append(other_node)
-
         # Create a group 
-        self.group = Group(nodes_in_selection, outsider_edges, outsider_nodes)
+        self.group = Group(nodes_in_selection)
 
     def handle_double_click(self): 
         """
@@ -890,7 +855,6 @@ class Canvas(QWidget):
 
         # then update the group 
         self.group = self.groups[id]
-        print('helloo?')
         self.group.update_group()
     
     def handle_scale_at(self, mouse_pos, scale):
@@ -938,13 +902,18 @@ class Canvas(QWidget):
                 self.network = read_network_from_graphml(file_name)
                 self.filedata = None
             elif file_name[-5:] == ".json": 
-                self.network = read_mooey_file(file_name)
-            else:
                 self.network, self.filedata = read_network_from_loom(file_name)
+            elif file_name[-6:] == '.mooey':
+                self.network = read_mooey_file(file_name)
+            else: 
+                print('File format not supported!')
+                return 
+            
             self.network.scale_by_shortest_edge( min_edge_scale )
             self.network.find_degree_2_lines()
             self.network.calculate_mid_point()
             self.network.find_min_max_geo()
+            self.network.divide_in_lines()
             self.history_checkpoint( f'Open "{file_name}"' )
             self.zoom_to_network()
             self.render()
@@ -975,16 +944,28 @@ class Canvas(QWidget):
         img.save(str(get_unique_filename(self.filename, extension='png')))
 
     def save_file(self): 
-        write_mooey_file(self.network)
-        print(f"Saved to {self.network.file_path}")
+        file_path = write_mooey_file(self.network)
+        print(f"Saved to {file_path}")
     
     def history_checkpoint(self, text):
         # Log the message
         print( "user\t"+text )
         # Delete the future
         self.history = self.history[0:self.history_index+1]
+        
         # Add the present
-        self.history.append(( text, self.network.clone() ))
+        current_network = self.network.clone()
+        current_group = [] 
+        if self.group: 
+            current_group = [(self.group.name, self.group.color)]
+            current_group += [node.name for node in self.group.nodes]
+        current_groups = []
+        for group_name, group in self.groups.items(): 
+            new_group = [(group_name, group.color)]
+            new_group += [node.name for node in group.nodes]
+            current_groups.append(new_group)
+
+        self.history.append(( text, current_network, current_group, current_groups ))
         self.history_index += 1
         self.update_history_actions()
 
@@ -1021,6 +1002,16 @@ class Canvas(QWidget):
         self.render()
     
     def fetch_history(self):
-        for node in self.history[self.history_index][1].nodes.values(): 
-            print(node.ports)
+        print(f'fetched - {self.history[self.history_index][0]}')
         self.network = self.history[self.history_index][1].clone()
+        self.group = None
+        selected_group = self.history[self.history_index][2]
+        if selected_group != None and len(selected_group) > 0: 
+            nodes = [node for node in self.network.nodes.values() if node.name in selected_group[1:]]
+            self.group = Group(nodes, selected_group[0][0], selected_group[0][1])
+        self.groups = {}
+        for group in self.history[self.history_index][3]: 
+            nodes = [node for node in self.network.nodes.values() if node.name in group[1:]]
+            self.groups[group[0][0]] = Group(nodes, group[0][0], group[0][1])
+
+        if self.history_index == 0: self.zoom_to_network()

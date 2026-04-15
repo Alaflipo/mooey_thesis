@@ -78,9 +78,8 @@ class Network:
         min_length = min([ e.geo_vector(e.v[0]).length() for e in self.edges ])
         factor = lb/min_length
         for v in self.nodes.values():
-            v.pos = factor * v.pos
-            v.geo_pos = factor * v.geo_pos
-
+            v.update_pos(factor * v.pos, factor * v.geo_pos)
+            
     def evict_all_edges(self):
         for v in self.nodes.values():
             for e in v.edges:
@@ -183,8 +182,12 @@ class Network:
                     if not edge.v[1] in self.lines[color]: self.lines[color].append(edge.v[1])
                 else: 
                     self.lines[color] = [edge.v[0], edge.v[1]]
-
-        print(self.lines)
+    
+    def ports_set(self): 
+        for edge in self.edges: 
+            if edge.port[0] == None or edge.port[1] == None: 
+                return False 
+        return True 
 
 class Node:
     def __init__(self, x, y, name: str, label:str = ""):
@@ -216,6 +219,11 @@ class Node:
         other.left_line = self.left_line
         other.locked = self.locked
         return other 
+    
+    def update_pos(self, pos: QPointF, geo_pos: QPointF): 
+        self.pos = pos 
+        self.geo_pos = geo_pos
+        self.label_node.update_pos(pos, geo_pos)
 
     def lock(self): 
         self.locked = True 
@@ -274,6 +282,8 @@ class Node:
         self.label_node.center_label = hor
         self.label_node.port = new_port
         self.ports[new_port] = self.label_node 
+        # don't know if this always necessary, can be removed if slow
+        self.label_node.update_label_border()
 
     def evict_label(self): 
         if self.label_node.port is not None: 
@@ -394,10 +404,23 @@ class Label:
         end = self.node.pos + ((self.text_width + label_dist) * port_offset[port])
         return self.get_label_border(start, end)
     
+    def update_pos(self, pos: QPointF, geo_pos: QPointF): 
+        self.head: QPointF = pos
+        self.geo_head: QPointF = geo_pos
+        self.end: QPointF = pos
+    
+    def set_pos_by_port(self, p: int): 
+        self.head = self.end + ((self.text_width + 20) * port_offset[p])
+    
     def set_position( self, x, y ):
         self.head = QPointF(x,y)
-        self.end = self.head + (self.text_width * port_offset[opposite_port(self.port)])
+
+        if self.port != None: 
+            self.end = self.head + (self.text_width * port_offset[opposite_port(self.port)])
         
+        self.rectangle_points = self.get_label_border(self.head, self.end)
+
+    def update_label_border(self): 
         self.rectangle_points = self.get_label_border(self.head, self.end)
 
     def get_label_border(self, start: QPointF, end: QPointF) -> QPolygonF:
@@ -425,6 +448,7 @@ class Edge:
         self.line_id: str = ''
 
         self.min_dist: int = 100
+        self.max_dist: int | None = None 
     
     def id(self,v):
         if self.v[0]==v: return 0
@@ -444,6 +468,9 @@ class Edge:
     # returns whether the edge is actually connected to v 
     def free_at(self,v):
         return self.port[self.id(v)]==None
+    
+    def has_no_port(self): 
+        return self.port[0] == None or self.port[1] == None
     
     def length(self) -> float: 
         return sqrt((self.v[0].pos.x()-self.v[1].pos.x())**2 + (self.v[0].pos.y()-self.v[1].pos.y())**2)

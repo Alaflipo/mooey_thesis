@@ -6,17 +6,18 @@ from PySide6.QtGui import QPolygonF
 
 from elements.network import Network, Node, Edge, Label
 
-def get_unique_filename(file_path, extension='json'):
-    path = Path(f'{str(file_path)[:-5]}.{extension}')
+def get_unique_filename(file_path:str, extension='json'):
+    name = str(file_path).split('.')[0]
+    path = Path(f'{name}.{extension}')
     counter = 1
 
     while path.exists():
-        path = Path(f"{str(file_path)[:-5]}_{counter}.{extension}")
+        path = Path(f"{name}_{counter}.{extension}")
         counter += 1
 
     return path
 
-def write_mooey_file(network: Network): 
+def write_mooey_file(network: Network) -> str: 
     file = {}
 
     nodes_json = []
@@ -55,11 +56,13 @@ def write_mooey_file(network: Network):
     file['edges'] = edges_json
 
     file['layout_set'] = network.layout_set
-
-    file_path = get_unique_filename(network.file_path)
+    
+    file_path = get_unique_filename(network.file_path, extension='mooey')
 
     with file_path.open("w") as f:
         json.dump(file, f, indent=4)
+
+    return file_path.name
 
 def read_mooey_file(file_path: str) -> Network:
     file_path = Path(file_path)
@@ -116,8 +119,6 @@ def read_mooey_file(file_path: str) -> Network:
         edge = Edge(*nodes)
 
         edge.port = [ (None if p == "None" else int(p)) for p in edge_json["ports"]]
-
-        print(nodes, edge.port)
 
         if edge_json["bend"] != "None":
             edge.bend = QPointF(edge_json["bend"][0], edge_json["bend"][1])

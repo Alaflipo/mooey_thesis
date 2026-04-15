@@ -57,61 +57,124 @@ def render_network( painter: QPainter, net: Network, show_background: bool, labe
             painter.drawEllipse(v.background_pos, 10, 10)
 
     # Draw the edges
+    # for e in net.edges:
+    #     center_index = (len(e.color) - 1) / 2
+    #     spacing = 4
+    #     for i in range(len(e.color)): 
+
+    #         offset = (i - center_index) * spacing
+    #         a_start, b_start = e.give_parralel_line(offset)
+
+    #         ui.edge_pen.setColor(QColor('#'+e.color[i]))
+    #         painter.setPen( ui.edge_pen )
+
+    #         painter.setBrush(Qt.NoBrush )
+
+    #         # a_start = e.v[0].pos
+    #         if e.free_at(e.v[0]):
+    #             if e.v[0]==ui.hover_node: 
+    #                 a_1 = free_edge_handle_position(e.v[0],e)
+    #             else: 
+    #                 a_1 = a_start + (ui.bezier_radius*e.direction(e.v[0])).toPointF()
+    #                 a_2 = a_start + (ui.bezier_cp*e.direction(e.v[0])).toPointF()
+    #         else:    
+    #             a_1 = a_start + ui.bezier_radius*port_offset[e.port[0]]
+    #             a_2 = a_start + ui.bezier_cp*port_offset[e.port[0]]
+
+    #         # b_start = e.v[1].pos
+    #         if e.free_at(e.v[1]):
+    #             if e.v[1]==ui.hover_node: 
+    #                 b_1 = free_edge_handle_position(e.v[1],e)
+    #             else: 
+    #                 b_1 = b_start + (ui.bezier_radius*e.direction(e.v[1])).toPointF()
+    #                 b_2 = b_start + (ui.bezier_cp*e.direction(e.v[1])).toPointF()
+    #         else:    
+    #             b_1 = b_start + ui.bezier_radius*port_offset[e.port[1]]
+    #             b_2 = b_start + ui.bezier_cp*port_offset[e.port[1]]
+
+    #         path = QPainterPath()
+
+    #         if e.free_at(e.v[0]):
+    #             path.moveTo( a_1 )
+    #         else:
+    #             path.moveTo( a_start )
+    #             path.lineTo( a_1 )
+            
+    #         if e.bend is None: 
+    #             path.cubicTo( a_2, b_2, b_1 )
+    #         else:
+    #             path.lineTo( e.give_point_offset(e.bend, offset) )
+    #             path.lineTo( b_1 )
+            
+    #         if not e.free_at(e.v[1]):
+    #             path.lineTo( b_start)
+    #         painter.drawPath(path)
+
+    painter.setBrush(Qt.NoBrush )
     for e in net.edges:
-        center_index = (len(e.color) - 1) / 2
-        spacing = 4
-        for i in range(len(e.color)): 
 
-            offset = (i - center_index) * spacing
-            a_start, b_start = e.give_parralel_line(offset)
+        if not net.layout_set: 
 
-            ui.edge_pen.setColor(QColor('#'+e.color[i]))
+            ui.edge_pen.setColor(QColor('#'+e.color[0]))
             painter.setPen( ui.edge_pen )
 
-            painter.setBrush(Qt.NoBrush )
-
-            # a_start = e.v[0].pos
+            a_start = e.v[0].pos
             if e.free_at(e.v[0]):
                 if e.v[0]==ui.hover_node: 
                     a_1 = free_edge_handle_position(e.v[0],e)
                 else: 
-                    a_1 = a_start + (ui.bezier_radius*e.direction(e.v[0])).toPointF()
-                    a_2 = a_start + (ui.bezier_cp*e.direction(e.v[0])).toPointF()
+                    a_1 = e.v[0].pos + (ui.bezier_radius*e.direction(e.v[0])).toPointF()
+                a_2 = e.v[0].pos + (ui.bezier_cp*e.direction(e.v[0])).toPointF()
             else:    
-                a_1 = a_start + ui.bezier_radius*port_offset[e.port[0]]
-                a_2 = a_start + ui.bezier_cp*port_offset[e.port[0]]
+                a_1 = e.v[0].pos + ui.bezier_radius*port_offset[e.port[0]]
+                a_2 = e.v[0].pos + ui.bezier_cp*port_offset[e.port[0]]
 
-            # b_start = e.v[1].pos
+            b_start = e.v[1].pos
             if e.free_at(e.v[1]):
                 if e.v[1]==ui.hover_node: 
                     b_1 = free_edge_handle_position(e.v[1],e)
                 else: 
-                    b_1 = b_start + (ui.bezier_radius*e.direction(e.v[1])).toPointF()
-                    b_2 = b_start + (ui.bezier_cp*e.direction(e.v[1])).toPointF()
+                    b_1 = e.v[1].pos + (ui.bezier_radius*e.direction(e.v[1])).toPointF()
+                b_2 = e.v[1].pos + (ui.bezier_cp*e.direction(e.v[1])).toPointF()
             else:    
-                b_1 = b_start + ui.bezier_radius*port_offset[e.port[1]]
-                b_2 = b_start + ui.bezier_cp*port_offset[e.port[1]]
+                b_1 = e.v[1].pos + ui.bezier_radius*port_offset[e.port[1]]
+                b_2 = e.v[1].pos + ui.bezier_cp*port_offset[e.port[1]]
 
             path = QPainterPath()
-
             if e.free_at(e.v[0]):
                 path.moveTo( a_1 )
             else:
                 path.moveTo( a_start )
                 path.lineTo( a_1 )
-            
             if e.bend is None: 
                 path.cubicTo( a_2, b_2, b_1 )
             else:
-                path.lineTo( e.give_point_offset(e.bend, offset) )
+                path.lineTo( e.bend )
                 path.lineTo( b_1 )
-            
             if not e.free_at(e.v[1]):
                 path.lineTo( b_start)
             painter.drawPath(path)
 
+        else: 
+            center_index = (len(e.color) - 1) / 2
+            spacing = 4
+
+            for i in range(len(e.color)): 
+                ui.edge_pen.setColor(QColor('#'+e.color[i]))
+                painter.setPen( ui.edge_pen )
+
+                offset = (i - center_index) * spacing
+                start_point, end_point = e.give_parralel_line(offset)
+                if e.bend: bend_point = e.give_point_offset(e.bend, offset)
+                path = QPainterPath()
+                path.moveTo(start_point)
+                if e.bend: 
+                    path.lineTo(bend_point)
+                path.lineTo(end_point)
+                painter.drawPath(path)
+
     # for indicator lines (should be done earlier because that looks prettier)
-    if ui.hover_node: 
+    if ui.hover_node and net.layout_set: 
         for e in ui.hover_node.edges:  
             # For minimal length indicator
             if (e.length() >= min_edge_length): 
@@ -155,6 +218,7 @@ def render_network( painter: QPainter, net: Network, show_background: bool, labe
                 painter.save()
                 painter.translate(handle_label_text_position(v, v.label_node.port))
                 if v.label_node.port is not None: painter.rotate(rotation_factor[v.label_node.port])   
+
                 painter.drawText( QPointF(0, 5), v.label )
                 painter.restore()
             else: 
@@ -383,7 +447,7 @@ def handle_label_text_position(v: Node, p: int):
         else: 
             return v.label_node.end
     else: 
-        return v.pos
+        return v.pos + QPointF(20, 0)
 
 def free_edge_handle_position( v, e ):
     dir = e.direction(v).toPointF()

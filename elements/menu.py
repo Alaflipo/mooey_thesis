@@ -127,7 +127,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.canvas.auto_update)
         # add_sidebar_button(layout, "Reset", lambda: self.do_reset_layout())
 
-        add_sidebar_button(layout, "GO!", lambda: self.do_port_assign())
+        add_sidebar_button(layout, "GO!", lambda: self.go_button_clicked())
 
         ### POST FIX LABELING
 
@@ -188,6 +188,10 @@ class MainWindow(QMainWindow):
 
         self.dropdown_changed(self.method_choice)
 
+    def go_button_clicked(self): 
+        self.do_port_assign()
+        self.canvas.history_checkpoint('Automatic port assignment')
+
     def selection_mode_changed(self, button: QPushButton):
         self.group_list.clear_selection()
         button.setChecked(True)
@@ -219,6 +223,7 @@ class MainWindow(QMainWindow):
         # slider.setFixedWidth(200)
         slider_index = len(self.sliders[slider_set])
         slider.valueChanged.connect(lambda x: self.update_slider_value(x, slider_set, slider_index, tick_size))
+        slider.sliderReleased.connect(lambda: self.on_slider_release(text, slider_set))
         layout.addWidget(slider)
         
         self.sliders[slider_set].append((label, slider))
@@ -250,6 +255,10 @@ class MainWindow(QMainWindow):
         elif self.auto_update_port.isChecked(): 
             self.do_port_assign()
 
+    def on_slider_release(self, text: str, slider_set: int): 
+        if slider_set == 0: self.canvas.history_checkpoint(f"Altered layout by changing {text}")
+        else: self.canvas.history_checkpoint(f"Altered port assignment by {text}")
+
     def add_group_selection(self): 
         name, ok = QInputDialog.getText(self, "Enter name", "Name:")
         name = name.strip()
@@ -266,19 +275,16 @@ class MainWindow(QMainWindow):
     def do_assign_round(self):
         port_assign.assign_by_rounding(self.canvas.network)
         self.update_layout_if_auto()
-        self.canvas.history_checkpoint("Assign ports by rounding")
         self.canvas.render()
 
     def do_assign_matching(self):
         port_assign.assign_by_local_matching(self.canvas.network)
         self.update_layout_if_auto()
-        self.canvas.history_checkpoint("Assign ports by matching")
         self.canvas.render()
 
     def do_assign_ilp(self):
         port_assign.assign_by_ilp(self.canvas.network)
         self.update_layout_if_auto()
-        self.canvas.history_checkpoint(f"Assign ports globally (bend cost {self.slider_values[3][0]})")
         self.canvas.render()
 
     def do_zoom_to_fit(self):
@@ -304,7 +310,6 @@ class MainWindow(QMainWindow):
             m.exec()
         else: 
             self.canvas.network.layout_set = True 
-        self.canvas.history_checkpoint("Automated layout")
         if self.canvas.drawing_is_completely_oob():
             self.canvas.zoom_to_network()
             self.canvas.network.set_background_image()
@@ -359,12 +364,14 @@ class MainWindow(QMainWindow):
         file_menu = menu_bar.addMenu("File")
         open_action = QAction("Open...", self)
         open_action.setShortcut(QKeySequence('Ctrl+O'))
-        open_action.triggered.connect(self.canvas.open_dialog)
+        open_action.triggered.connect(self.open_file)
         file_menu.addAction(open_action)
         save_action = QAction("Save....", self)
+        save_action.setShortcut(QKeySequence('Ctrl+S'))
         save_action.triggered.connect(self.canvas.save_file)
         file_menu.addAction(save_action)
         picture_action = QAction("Take picture", self)
+        picture_action.setShortcut(QKeySequence('Ctrl+P'))
         picture_action.triggered.connect(self.canvas.create_image)
         file_menu.addAction(picture_action)
         exit_action = QAction("Exit", self)
@@ -382,6 +389,11 @@ class MainWindow(QMainWindow):
         edit_menu.addAction(self.canvas.redo_action)
         self.canvas.redo_action.setShortcut(QKeySequence('Ctrl+Shift+Z'))
         self.canvas.redo_action.triggered.connect(self.canvas.redo)
+
+    def open_file(self): 
+        self.canvas.open_dialog()
+        self.group_list.add_current_metro_lines()
+        self.group_list.update_height()
 
 def add_sidebar_button(layout, text, action):
     button = QPushButton(text)
@@ -432,11 +444,11 @@ class SliderRow(QWidget):
         self.value_label = QLabel(str(value))
 
         self.handle_slider_change = handle_slider_change
-        self.handle_slider_relase =handle_slider_release
+        self.handle_slider_relase = handle_slider_release
 
         self.slider.valueChanged.connect(lambda value: self.handle_value_changed(value))
         self.slider.valueChanged.connect(self.value_changed)
-        self.slider.sliderReleased.connect(self.handle_slider_relase)
+        self.slider.sliderReleased.connect(lambda: self.handle_slider_relase(id))
 
         layout.addWidget(self.label)
         layout.addWidget(self.slider, 1)
@@ -624,12 +636,19 @@ class GroupList(QListWidget):
         # Also remove the group from the canvas 
         self.canvas.groups.pop(item_id)
         self.update_height()
+
+    def remove_all_items(self): 
+        for item in self.items: 
+            widget = self.items[item]
+            self.layout.removeWidget(widget)
+            widget.deleteLater()
+        self.items = {}
+        self.clear_selection()
     
     def handle_slider_change(self, item_id, slider_id, value): 
         if not self.canvas.group: 
             self.current_id = item_id
             self.items[item_id].set_selected(True)
-            self.selection_changed.emit(item_id)
             self.canvas.handle_group_select(item_id)
 
         match slider_id: 
@@ -641,14 +660,18 @@ class GroupList(QListWidget):
         layout.layout_lp(self.canvas.network)
 
         self.canvas.groups[item_id].update_group()
-
-        self.canvas.history_checkpoint(f"Assign ports locally (bend cost {value})")
         self.canvas.render()
     
-    def handle_slider_release(self): 
-        # needed such that we update the showing of labels also when we just release a slider
-        self.canvas.group.show_labels = False
-        self.canvas.render()
+    def handle_slider_release(self, id): 
+        if self.canvas.group: 
+            # needed such that we update the showing of labels also when we just release a slider
+            self.canvas.group.show_labels = False
+            if id == 0: text = "bend-penalty"
+            elif id == 1: text = "label horizontal weight"
+            elif id == 2: text = "same side weight"
+            else: text = ''
+            self.canvas.history_checkpoint(f"Port assignement by changing local {text}")
+            self.canvas.render()
     
     def update_height(self):
         # Updates the height of the fixed height of the list 

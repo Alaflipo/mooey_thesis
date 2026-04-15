@@ -1,4 +1,4 @@
-
+from __future__ import annotations 
 
 from PySide6.QtGui import Qt, QPolygonF, QVector2D
 from PySide6.QtCore import QPointF, QRectF, QLineF
@@ -8,7 +8,7 @@ from shapely.ops import unary_union, polygonize
 
 from collections import deque
 
-from elements.network import Node, Edge
+from elements.network import Node, Edge, Network
 from math import sqrt
 
 def opposite_port( p ):
@@ -28,10 +28,13 @@ port_offset = [ QPointF(-1,0)
 
 class Group: 
 
-    def __init__(self, nodes: list[Node], conn_edges: list[Edge], conn_nodes: list[Node], name: str = '', color = None):
+    def __init__(self, nodes: list[Node], name: str = '', color = None):
         self.nodes: list[Node] = nodes 
-        self.conn_edges: list[Edge] = conn_edges
-        self.conn_nodes: list[Node] = conn_nodes
+        self.conn_edges: list[Edge] = []
+        self.conn_nodes: list[Node] = []
+        
+        self.find_conn_edge_nodes()
+
         self.name: str = name 
         self.color: str | None = color
 
@@ -62,9 +65,25 @@ class Group:
 
         self.update_group()
 
+    def find_conn_edge_nodes(self): 
+        self.conn_edges: list[Edge] = []
+        self.conn_nodes: list[Node] = []
+        # Find an edge that connects the group to a node outside the group
+        for v in self.nodes:
+            for e in v.edges:
+                other_node = e.other(v)
+                if other_node not in self.nodes:
+                    self.conn_edges.append(e)
+                    self.conn_nodes.append(other_node)
+
     def update_group(self): 
         self.update_border()
         self.determine_pivot_buttons()
+
+    def clone(self, network: Network) -> Group:
+        group_node_names = [group_node.name for group_node in self.nodes]
+        new_group_nodes = [v for v in network.nodes.values() if v.name in group_node_names]
+        return Group(new_group_nodes, name=self.name, color=self.color)
 
     def can_be_moved(self) -> bool: 
         return len(self.conn_nodes) > 0
@@ -307,10 +326,8 @@ class Group:
         common_edge = ports[max_port][0]
 
         for node in common_edge.v: 
-            print(node.label_node.label_text)
             edge = common_edge
             port = edge.port_at(node)
-            print(port)
        
             label_port = node.label_node.port 
 
@@ -374,7 +391,6 @@ class Group:
         right_edge = min(self.internal[left_node], key=lambda edge: abs(self.circular_diff(4, edge.port_at(left_node))))
 
         sequence = self.generate_circle_sequence(len(self.nodes))
-        print(sequence, len(self.nodes))
 
         node = left_node 
         edge = right_edge 

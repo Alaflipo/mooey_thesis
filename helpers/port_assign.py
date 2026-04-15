@@ -201,6 +201,7 @@ def assign_by_ilp( net: Network):
             for p in range(8): 
                 if x[p].solution_value() > 0.5: 
                     v.assign_label(p)
+                    v.label_node.set_pos_by_port(p)
         # for v in net.nodes.values(): 
         #     v.assign_label(v.first_free_port())
     else:
