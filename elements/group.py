@@ -3,7 +3,7 @@ from __future__ import annotations
 from PySide6.QtGui import Qt, QPolygonF, QVector2D
 from PySide6.QtCore import QPointF, QRectF, QLineF
 
-from shapely.geometry import LineString, MultiLineString
+from shapely.geometry import LineString, MultiLineString, Point
 from shapely.ops import unary_union, polygonize
 
 from collections import deque
@@ -32,6 +32,8 @@ class Group:
         self.nodes: list[Node] = nodes 
         self.conn_edges: list[Edge] = []
         self.conn_nodes: list[Node] = []
+        self.pivot_edges: list[Edge] = []
+        self.pivot_nodes: list[Node] = []
         
         self.find_conn_edge_nodes()
 
@@ -41,6 +43,7 @@ class Group:
         self.button_size = 20
 
         self.internal_edges = self.find_all_edges()
+        self.find_degree_2_lines()
 
         # Buttons 
         self.pivot_buttons_pos: list[QPointF] = []
@@ -66,15 +69,20 @@ class Group:
         self.update_group()
 
     def find_conn_edge_nodes(self): 
-        self.conn_edges: list[Edge] = []
-        self.conn_nodes: list[Node] = []
         # Find an edge that connects the group to a node outside the group
         for v in self.nodes:
+            has_external = False 
+            internal: list[Edge] = []
             for e in v.edges:
                 other_node = e.other(v)
                 if other_node not in self.nodes:
+                    has_external = True 
                     self.conn_edges.append(e)
                     self.conn_nodes.append(other_node)
+                else: internal.append(e)
+            if has_external: 
+                self.pivot_edges += internal
+                self.pivot_nodes += [v] * len(internal)
 
     def update_group(self): 
         self.update_border()
@@ -128,9 +136,15 @@ class Group:
         for i in range(8):
             dist = QVector2D(self.handle_port_offset(self.label_button_pos, i) - point).length()
 
-            if dist < 10:
+            if dist < 6:
                 self.hover_label_port = i
                 return i
+            
+        # we clicked in the middle of the button
+        if dist_button < self.button_size: 
+            self.hover_label_port = 8
+            return 8
+
         return None 
     
     def get_slider_values(self) -> tuple: 
@@ -159,9 +173,8 @@ class Group:
 
     def pivot(self, mouse_pos: QPointF, button_index: int) -> tuple[QPointF | None, int]: 
         
-        # We just pick one for now 
-        outside_v = self.conn_nodes[button_index]
-        outside_e = self.conn_edges[button_index]
+        outside_v = self.pivot_nodes[button_index]
+        outside_e = self.pivot_edges[button_index]
 
         closer_port = outside_v.check_for_closer_port(mouse_pos)
 
@@ -171,22 +184,75 @@ class Group:
             distance = self.circular_diff(outside_e.port_at(outside_v), closer_port)
 
             # rotate all nodes in the group by shifting ports in the same direction
+            # for v in self.nodes: 
+            #     v.lock()
+            #     # if v in self.pivot_nodes: continue 
+            #     # we skip the pivot points
+
+            #     new_label_port = (v.label_node.port + distance) % 8
+            #     # reassign all internal edges connected to other nodes in the group
+            #     for e in v.edges: 
+            #         other_v = e.other(v)
+            #         if other_v in self.nodes: 
+            #             v.assign(e, (e.port_at(v) + distance) % 8)
+
+            #     # reassign the node label to the rotated port
+            #     if v.ports[new_label_port] == None: 
+            #         v.assign_label(new_label_port)
+            #     else: 
+            #         v.assign_label(v.first_free_port())
+
             for v in self.nodes: 
                 v.lock()
-                new_label_port = (v.label_node.port + distance) % 8
-                # reassign all internal edges connected to other nodes in the group
-                for e in v.edges: 
-                    if e.other(v) in self.nodes: 
-                        v.assign(e, (e.port_at(v) + distance) % 8)
 
-                # reassign the node label to the rotated port
-                v.assign_label(new_label_port)
+                new_label_port = (v.label_node.port + distance) % 8
+                new_ports: list[tuple[Edge, int, int]] = []
+                exceptions = []
+                for e in v.edges: 
+                    if e in self.conn_edges: 
+                        exceptions.append(e)
+                    else: 
+                        new_ports.append((e, (e.port_at(v) + distance) % 8, e.port_at(v)))
+                v.evict_all(exceptions = exceptions)
+
+                for e, port, old_port in new_ports: 
+                    if not v.assign(e, port): 
+                        v.assign(e, old_port)
+
+
+                if v.ports[new_label_port] == None: 
+                    v.assign_label(new_label_port)
+                else: 
+                    v.assign_label(v.first_free_port())
+            
+            # for e in self.internal_edges: 
+            #     v1 = e.v[0]
+            #     new_port = 
+            #     v1.assign(e, (e.port_at(v1) + distance) % 8)
+
+            #     v2 = e.v[1]
+            #     v2.assign(e, (e.port_at(v2) + distance) % 8)
+
+            # for v in self.nodes: 
+            #     v.lock()
+            #     new_label_port = (v.label_node.port + distance) % 8
+            #     v.assign_label(new_label_port)
+                
+
+            # for i in range(len(self.pivot_edges)): 
+            #     new_port = (self.pivot_edges[i].port_at(self.pivot_nodes[i]) + distance) % 8
+            #     if new_port in self.pivot_nodes[i].get_free_ports(ignore_label=True):
+            #         self.pivot_nodes[i].assign_both_ends(self.pivot_edges[i], new_port)
+
+            # new_outside_port = (outside_e.port_at(outside_v) + distance) % 8
+            # if new_outside_port in outside_v.get_free_ports(ignore_label=True):
+            #         outside_v.assign_both_ends(outside_e, new_outside_port)
 
             # reassign the outside edge at the external node to complete the pivot
-            for i in range(len(self.conn_edges)): 
-                new_port = (self.conn_edges[i].port_at(self.conn_nodes[i]) + distance) % 8
-                if new_port in self.conn_nodes[i].get_free_ports(ignore_label=True):
-                    self.conn_nodes[i].assign_both_ends(self.conn_edges[i], new_port)
+            # for i in range(len(self.pivot_edges)): 
+            #     new_port = (self.pivot_edges[i].port_at(self.pivot_nodes[i]) + distance) % 8
+            #     if new_port in self.pivot_nodes[i].get_free_ports(ignore_label=True):
+            #         self.pivot_nodes[i].assign_both_ends(self.pivot_edges[i], new_port)
             
             return outside_v.pos, 45 * distance 
         
@@ -262,6 +328,39 @@ class Group:
             if v.isfree(self.label_port_active): 
                 v.assign_label(self.label_port_active)
         return self.label_port_active
+    
+    def find_degree_2_lines(self): 
+        self.deg_2_lines: list[list[Node]] = []
+        seen: dict = dict()
+        for v in self.nodes: 
+            if v in seen: continue
+
+            if v.is_deg2() and len(self.internal[v]) == 2:
+                seen[v] = True 
+
+                path1 = self.spacewalk( self.internal[v][0].other(v), v, seen )
+                path2 = self.spacewalk( self.internal[v][1].other(v), v, seen )
+                walk: list[Node] = path1 + [v] + list(reversed(path2))
+                self.deg_2_lines.append(walk)
+            else: # We skip degree 1 and > 2 because they will be taken into account with one of the walks 
+                continue 
+    
+    def spacewalk(self, v: Node, prev, seen ) -> list[Node]:
+        seen[v] = True
+        walk = []
+
+        if v.is_deg2() and len(self.internal[v]) == 2:
+            v0 = v.edges[0].other(v)
+            v1 = v.edges[1].other(v)
+            next = v0 if v1==prev else v1
+            # We want to add deg 1 and deg > 2 to the walk because they do belong to the part of the metro line
+            if next.is_deg2() and len(self.internal[next]) == 2:
+                if not next in seen:
+                    walk = self.spacewalk( next, v, seen )
+            elif next in self.internal: 
+                walk.append(next)
+        walk.append(v)
+        return walk
     
     def amount_internal_edges(self, node: Node): 
         amount = 0 
@@ -425,6 +524,16 @@ class Group:
         self.label_button_pos = QPointF(self.bounding_rect.center().x(), self.bounding_rect.bottom() + 60)
         self.shape_button_pos = QPointF(self.bounding_rect.center().x() + 50, self.bounding_rect.bottom() + 60)
 
+        # If the border only exists of nodes and no edges 
+        self.border = []
+        if len(self.internal_edges) == 0: 
+            for node in self.nodes: 
+                geom = Point(node.pos.x(), node.pos.y()).buffer(30, cap_style=1, join_style=1)
+                border_part = [QPolygonF([QPointF(x, y) for x, y in geom.exterior.coords])]
+                self.border.append(border_part)
+            return 
+
+        # if the border exists of nodes and edges 
         lines: list[LineString] = []
         for edge in self.internal_edges: 
             if edge.bend: 
@@ -435,8 +544,6 @@ class Group:
 
         buffered = [line.buffer(30, cap_style=1, join_style=1) for line in lines]
         geom = unary_union(buffered)
-
-        self.border = []
 
         shape_list = [geom]
         if geom.geom_type == "MultiPolygon":
@@ -468,9 +575,9 @@ class Group:
             QLineF(self.bounding_rect.bottomLeft(), self.bounding_rect.topLeft()),
         ]
 
-        for i, conn_edge in enumerate(self.conn_edges):
+        for i, pivot_edge in enumerate(self.pivot_edges):
             
-            line = QLineF(self.conn_nodes[i].pos, conn_edge.other(self.conn_nodes[i]).pos)
+            line = QLineF(self.pivot_nodes[i].pos, pivot_edge.other(self.pivot_nodes[i]).pos)
 
             points = []
             
@@ -485,6 +592,6 @@ class Group:
             if len(points) > 0: 
                 self.pivot_buttons_pos.append(
                     max(points, 
-                        key=lambda p: (p - self.conn_nodes[i].pos).x()**2 + (p - self.conn_nodes[i].pos).y()**2
+                        key=lambda p: (p - self.pivot_nodes[i].pos).x()**2 + (p - self.pivot_nodes[i].pos).y()**2
                     )
                 )

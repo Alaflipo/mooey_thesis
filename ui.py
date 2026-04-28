@@ -51,7 +51,7 @@ button_pen = QPen( QColor('black'), 2 )
 
 # Parameters for UI geometry
 
-hover_node_radius = 40
+hover_node_radius = 60
 bezier_radius = 20
 bezier_cp = 60
 rose_radius = 20

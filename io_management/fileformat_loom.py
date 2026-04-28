@@ -58,10 +58,6 @@ def read_network_from_loom(filename):
                 metro_lines[id] = [e]
         
         network.metro_lines = metro_lines
-
-    for node in network.nodes.values(): 
-        print(node.pos, node.label_node.end)
-        # node.label_node.head = node.pos  
     return network, data
 
 def example_network(): 

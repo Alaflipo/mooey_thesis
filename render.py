@@ -201,37 +201,43 @@ def render_network( painter: QPainter, net: Network, show_background: bool, labe
         painter.setBrush(ui.node_brush)
         painter.drawEllipse(v.pos, 10, 10)
 
+        # We don't render labels if there is no text to be rendered 
+        if v.label_node.label_text == "": continue 
+
+        # We don't render labels if a node is being dragged (we do want to render when labels are dragged)
+        if ui.drag_node and not ui.hover_node and not ui.drag_label: continue 
+
+        # We don't render labels if certain buttons in the group are clicked or in use
         if group and v in group.nodes and not group.show_labels and group.hover_label_port == None: continue 
 
-        if (not ui.drag_node or ui.hover_node) and v.label_node.label_text != "": 
-            if not v.label_node.center_label: 
-                # Draw bouding box label
-                painter.setPen(QPen(QColor('lightgray'),5))
-                painter.setBrush(ui.rose_used_brush)
-                if net.layout_set: 
-                    # painter.drawLine(v.label_node.head, v.label_node.end) 
-                    painter.drawPolygon(v.label_node.rectangle_points)
+        if not v.label_node.center_label: 
+            # Draw bouding box label
+            painter.setPen(QPen(QColor('lightgray'),5))
+            painter.setBrush(ui.rose_used_brush)
+            if net.layout_set: 
+                # painter.drawLine(v.label_node.head, v.label_node.end) 
+                painter.drawPolygon(v.label_node.rectangle_points)
 
-                # Draw text in bounding box  
-                painter.setPen(QPen(QColor('black'),20))
-                painter.setFont(QFont("Arial", 15))
-                painter.save()
-                painter.translate(handle_label_text_position(v, v.label_node.port))
-                if v.label_node.port is not None: painter.rotate(rotation_factor[v.label_node.port])   
+            # Draw text in bounding box  
+            painter.setPen(QPen(QColor('black'),20))
+            painter.setFont(QFont("Arial", 15))
+            painter.save()
+            painter.translate(handle_label_text_position(v, v.label_node.port))
+            if v.label_node.port is not None: painter.rotate(rotation_factor[v.label_node.port])   
 
-                painter.drawText( QPointF(0, 5), v.label )
-                painter.restore()
-            else: 
-                # For horizontal labels 
-                vert_dist = label_dist if v.label_node.port == 2 else -label_dist
-                vert_dist_text = vert_dist + 5 if v.label_node.port == 2 else vert_dist + 5
-                painter.setPen(QPen(QColor('lightgray'),20))
-                if net.layout_set: 
-                    painter.drawLine(v.pos + QPointF(-v.label_node.text_width/2, vert_dist), v.pos + QPointF(v.label_node.text_width/2, vert_dist))
-                
-                painter.setPen(QPen(QColor('black'),20))
-                painter.setFont(QFont("Arial", 15))
-                painter.drawText(v.pos + QPointF(-v.label_node.text_width/2, vert_dist_text), v.label)
+            painter.drawText( QPointF(0, 5), v.label )
+            painter.restore()
+        else: 
+            # For horizontal labels 
+            vert_dist = label_dist if v.label_node.port == 2 else -label_dist
+            vert_dist_text = vert_dist + 5 if v.label_node.port == 2 else vert_dist + 5
+            painter.setPen(QPen(QColor('lightgray'),20))
+            if net.layout_set: 
+                painter.drawLine(v.pos + QPointF(-v.label_node.text_width/2, vert_dist), v.pos + QPointF(v.label_node.text_width/2, vert_dist))
+            
+            painter.setPen(QPen(QColor('black'),20))
+            painter.setFont(QFont("Arial", 15))
+            painter.drawText(v.pos + QPointF(-v.label_node.text_width/2, vert_dist_text), v.label)
     
     # Draw UI for the node close to the mouse
     if ui.hover_node:
@@ -306,7 +312,7 @@ def render_group(painter: QPainter, group: Group,  move_group: bool, pivot_group
             painter.setBrush(QBrush(QColor('lightgreen')))
             painter.drawEllipse(button, 20, 20)
             painter.setBrush(Qt.NoBrush )
-            open_dir = angle_from_points(button, group.conn_nodes[i].pos) + 90
+            open_dir = angle_from_points(button, group.pivot_nodes[i].pos) + 90
             draw_arc_with_arrows(painter, button, 40, arc_deg=90, open_direction_deg=open_dir)
 
     painter.setBrush(QBrush(QColor('red')))
@@ -345,6 +351,8 @@ def render_group(painter: QPainter, group: Group,  move_group: bool, pivot_group
                 renderer.render(painter, QRectF(shape_but.x() - 10, shape_but.y() - icon_size/2, icon_size, icon_size))
 
         # For label button 
+        if group.hover_label_port == 8: 
+            painter.setBrush(ui.highlight_brush)
         label_but = group.label_button_pos
         painter.drawEllipse(label_but, group.button_size, group.button_size)
         renderer = QSvgRenderer("assets/label.svg")

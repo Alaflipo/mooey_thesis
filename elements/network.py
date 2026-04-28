@@ -208,8 +208,8 @@ class Node:
         self.locked: bool = False 
 
         self.bend_penalty: float = 0 
-        self.label_hor: float = 0 
-        self.label_same_side: float = 0 
+        self.label_hor: float = 10
+        self.label_same_side: float = 10
 
     # Still need to add label_node and edges (edges and ports) on your own 
     def clone(self, x, y, name, label) -> Node:
@@ -274,6 +274,12 @@ class Node:
         self.ports[e.port[me]] = None
         e.port[me] = None
         e.bend = None
+    
+    def evict_all(self, exceptions: list[Edge]): 
+        for item in self.ports: 
+            if item in exceptions: continue
+            if type(item) == Edge: self.evict(item)
+            if type(item) == Label: self.evict_label()
 
     def assign_label(self, new_port, hor=False): 
         # First make sure that the label is evicted (if there is a new edge there we leave it)
@@ -298,6 +304,7 @@ class Node:
         return len(self.edges) == 2
 
     def straighten_deg2( self, e: Edge ):
+
         port = e.port[e.id(self)]
         label_port = self.label_node.port 
 
@@ -345,6 +352,13 @@ class Node:
             if port == None: free_ports.append(i)
             if type(port) == Label and ignore_label: free_ports.append(i)
         return free_ports
+    
+    def get_occupied_ports(self, ignore_label=False) -> list[int]: 
+        occupied = []
+        for i, item in enumerate(self.ports): 
+            if type(item) == Edge: occupied.append(i)
+            if type(item) == Label and not ignore_label: occupied.append(i)
+        return occupied
     
     def first_free_port(self, exceptions=[]): 
         for i, port in enumerate(self.ports): 

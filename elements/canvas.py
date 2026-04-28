@@ -263,11 +263,9 @@ class Canvas(QWidget):
                 # we only translate when we have no dragging, results in more intuitive interaction
                 if resolve_shift and not self.drag: 
                     self.view.translate(-resolve_shift.x(), -resolve_shift.y())
-
                 # This is just so the 'drag one node' behaviour works properly again (was removed for some reason)
-                elif self.network_change[0:4] == 'drag' and ui.drag_node and len(ui.drag_node.edges) != 1: 
+                elif self.network_change[0:9] == 'drag node' and ui.drag_node and len(ui.drag_node.edges) != 1 and len(self.affected_nodes) <= 2: 
                     self.view.translate(self.mouse_pos.x() - ui.drag_node.pos.x(), self.mouse_pos.y() - ui.drag_node.pos.y())
-
                 if resolve_shift is False:
                     print('no shift')
                     m = QMessageBox()
@@ -565,9 +563,15 @@ class Canvas(QWidget):
             if success: self.network_change = 'changed shape'
 
         if self.group and self.label_group and self.group.hover_label_port != None: 
-            
-            new_port = self.group.set_group_labels()
-            self.network_change = f'changed labels to port {new_port}'
+
+            ##### Voor als er in het midden word geklikt 
+            if self.group.hover_label_port == 8: 
+                pa.post_fix_overlap_ilp_group(self.network, self.label_dist, self.group)
+                self.group.label_port_active = None
+                self.network_change = f're-assigned group labels via ILP'
+            else: 
+                new_port = self.group.set_group_labels()
+                self.network_change = f'changed labels to port {new_port}'
 
         # Handles every drag release event 
         self.handle_release_drag(event)
@@ -707,7 +711,7 @@ class Canvas(QWidget):
         self.network_change is updated to describe modifications made.
         """
         # if no edge is hovered over nothing can be straightened
-        if ui.hover_edge is None: return 
+        if ui.hover_edge is None or type(ui.hover_edge) == Label: return 
 
         # Straighten the hovered edge relative to the hovered node
         ui.hover_node.straighten_deg2( ui.hover_edge )
@@ -755,7 +759,7 @@ class Canvas(QWidget):
             dist = math.sqrt(dif.x()**2 + dif.y()**2)
 
             # determine how deep the effect propagates along the edge
-            depth = int(2 * dist / current_edge.min_dist)
+            depth = int(2 * dist / current_edge.min_dist) 
             gen_depth = depth
 
             # depth at which reassignment should occur (so it only happens once instead of for all nodes)
@@ -778,7 +782,7 @@ class Canvas(QWidget):
                 # reassign edge if we are at the correct depth for reassignment
                 if closer_port != current_edge.port_at(neighbour) and i == affect_depth:
                     neighbour.assign_both_ends(current_edge, closer_port)
-                    self.network_change = (f'drag - Reassign at "{current_node.label}" - "{neighbour.label}" to port {closer_port}')
+                    self.network_change = (f'drag node - Reassign at "{current_node.label}" - "{neighbour.label}" to port {closer_port}')
 
                 current_node = neighbour
                 # stop traversal if node is not deg 2

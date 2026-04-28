@@ -1,5 +1,5 @@
-from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QFrame, QLabel, QCheckBox, QMessageBox, QDialog, QSlider, QComboBox, QButtonGroup, QScrollArea, QListWidget, QListWidgetItem, QToolButton, QInputDialog
-from PySide6.QtGui import Qt, QAction, QKeySequence, QPolygonF, QIcon, QPixmap, QPainter, QColor
+from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QFrame, QLabel, QCheckBox, QMessageBox, QDialog, QSlider, QComboBox, QButtonGroup, QScrollArea, QListWidget, QListWidgetItem, QToolButton, QInputDialog, QApplication
+from PySide6.QtGui import Qt, QAction, QKeySequence, QPolygonF, QIcon, QPixmap, QPainter, QColor, QPalette
 from PySide6.QtCore import QPointF, QSize, Signal
 
 import datetime
@@ -62,83 +62,29 @@ class MainWindow(QMainWindow):
 
         self.construct_sidebar(button_layout)
         self.construct_menubar()
+        button_layout.addStretch()
 
-        # TODO: add history stuff 
-        self.canvas.history_checkpoint( "Initial drawing" )
-        self.canvas.update_history_actions()
-
-        # Control variables
+         # Control variables
         self.label_strength: float = 0.1
 
+        self.do_port_assign()
+        self.canvas.history_checkpoint( "Initial drawing" )
+        self.canvas.update_history_actions()
     
     def construct_sidebar(self, layout):
-
-        #### PORT ASSIGNMENT
-
-        # Buttons to control port assignment methods 
-        add_group_separator(layout)
-        layout.addWidget(QLabel("Port assignment"))
         
-        # Dropdown
-        self.combo = QComboBox()
-        self.combo.addItems(self.methods)
-        self.combo.setCurrentIndex(self.method_choice)
-        layout.addWidget(self.combo)
-        self.combo.currentIndexChanged.connect(self.dropdown_changed)
+        add_group_separator(layout)
+        title = QLabel("MOOEY")
+        title.setStyleSheet("font-weight: bold; color: #d83838; font-size: 47px")
+        layout.addWidget(title)
 
-        # General sliders 
-
-        # sliders rounding method 
-
-        # sliders matching method
-        self.add_slider(layout, "Label Horizontal Weight", 0, 200, 0, slider_set=2)
-
-        # sliders global method
-        self.add_slider(layout, "Bend penalty", 0, 50, 0, slider_set=3, tick_size=0.1)
-        self.add_slider(layout, "Label Horizontal Weight", 0, 200, 0, slider_set=3)
-        self.add_slider(layout, "Label Same-Side Weight", 0, 100, 0, slider_set=3)
-
-        # Exectue chosen method 
-        # add_sidebar_button(layout, "GO!", lambda: self.do_port_assign())
+        add_group_separator(layout)
         
-        # Auto update port assignment 
-        self.auto_update_port = QCheckBox("Auto-update Ports")
-        self.auto_update_port.setChecked(True)
-        # layout.addWidget(self.auto_update_port)
-
-        # evict port assignment choice 
-        # add_sidebar_button(layout, "Evict all", lambda: self.do_assign_reset())
-
-
-        #### LAYOUT ALGO 
-
-        # Buttons to control the layout algorithm
-        add_group_separator(layout)
-        layout.addWidget(QLabel("Layout"))
-
-        # general slider
-        self.add_slider(layout, "Label distance", 0, 50, 25, slider_set=0)
-        self.add_slider(layout, "Min edge distance", 0, 150, 100, slider_set=0)
-
-        # add_sidebar_button(layout, "Update layout", lambda: self.do_layout())
-
-        self.canvas.auto_update = QCheckBox("Auto-update")
-        self.canvas.auto_update.setChecked(True)
-        layout.addWidget(self.canvas.auto_update)
-        # add_sidebar_button(layout, "Reset", lambda: self.do_reset_layout())
-
-        add_sidebar_button(layout, "GO!", lambda: self.go_button_clicked())
-
-        ### POST FIX LABELING
-
-        add_group_separator(layout)
-        layout.addWidget(QLabel("Labels"))
-        add_sidebar_button(layout, "Fix label overlap", lambda: self.do_fix_label_overlap())
 
         #### SELECTION METHODS 
-
-        add_group_separator(layout)
-        layout.addWidget(QLabel("Selection method"))
+        # label = QLabel("Selection method")
+        # label.setStyleSheet("font-weight: bold;")
+        # layout.addWidget(label)
 
         button_row = QHBoxLayout()
         button_row.setSpacing(6)
@@ -168,23 +114,93 @@ class MainWindow(QMainWindow):
         self.group_list = GroupList(self.canvas, select_buttons=self.hor_buttons)
         layout.addWidget(self.group_list)
         add_sidebar_button(layout, "Add Group", self.add_group_selection)
+        add_sidebar_button(layout, "Fix label overlap", lambda: self.do_fix_label_overlap())
 
-        # Buttons to control the rendering
-        add_group_separator(layout)
-        layout.addWidget(QLabel("Rendering"))
-        add_sidebar_button(layout, "Render using Loom", lambda: self.do_render())
+        #### PORT ASSIGNMENT
+
+        # Buttons to control port assignment methods 
+        # add_group_separator(layout)
+        port_assign_box = CollapsibleBox("Port assignment", open=False)
+        layout.addWidget(port_assign_box)
+        
+        # Dropdown
+        self.combo = QComboBox()
+        self.combo.addItems(self.methods)
+        self.combo.setCurrentIndex(self.method_choice)
+        self.combo.currentIndexChanged.connect(self.dropdown_changed)
+        port_assign_box.addWidget(self.combo)
+
+        # General sliders 
+
+        # sliders rounding method 
+
+        # sliders matching method
+        self.add_slider(port_assign_box, "Label Horizontal Weight", 0, 200, 0, slider_set=2)
+
+        # sliders global method
+        self.add_slider(port_assign_box, "Bend penalty", 0, 50, 0, slider_set=3, tick_size=0.1)
+        self.add_slider(port_assign_box, "Label Horizontal Weight", 0, 200, 10, slider_set=3)
+        self.add_slider(port_assign_box, "Label Same-Side Weight", 0, 100, 10, slider_set=3)
+
+        # Exectue chosen method 
+        # add_sidebar_button(layout, "GO!", lambda: self.do_port_assign())
+        
+        # Auto update port assignment 
+        # self.auto_update_port = QCheckBox("Auto-update Ports")
+        # self.auto_update_port.setChecked(True)
+        # layout.addWidget(self.auto_update_port)
+
+        # evict port assignment choice 
+        # add_sidebar_button(layout, "Evict all", lambda: self.do_assign_reset())
+
+
+        #### LAYOUT ALGO 
+
+        # Buttons to control the layout algorithm
+        # add_group_separator(layout)
+        layout_box = CollapsibleBox("Layout", open=False)
+        layout.addWidget(layout_box)
+
+        # general slider
+        self.add_slider(layout_box, "Min edge distance", 0, 150, 100, slider_set=0)
+        self.add_slider(layout_box, "Label distance", 0, 50, 25, slider_set=0)
+
+        # add_sidebar_button(layout, "Update layout", lambda: self.do_layout())
+
+        self.canvas.auto_update = QCheckBox("Auto-update")
+        self.canvas.auto_update.setChecked(True)
+        # layout_box.addWidget(self.canvas.auto_update)
+        # add_sidebar_button(layout, "Reset", lambda: self.do_reset_layout())
+
+        # add_sidebar_button(layout_box, "GO!", lambda: self.go_button_clicked())
+
+        ### POST FIX LABELING
+
+        # add_group_separator(layout)
+        labels_box = CollapsibleBox("Labels", open=False)
+        layout.addWidget(labels_box)
+
+        ### RENDERING  
+
+        # add_group_separator(layout)
+        rendering_box = CollapsibleBox("Rendering", open=False)
+        layout.addWidget(rendering_box)
+
+        add_sidebar_button(rendering_box, "Render using Loom", lambda: self.do_render())
         self.canvas.auto_render = QCheckBox("Auto-render")
         self.canvas.auto_render.setChecked(False)
-        layout.addWidget(self.canvas.auto_render)
+        rendering_box.addWidget(self.canvas.auto_render)
 
-        # Buttons to control the view 
-        add_group_separator(layout)
-        layout.addWidget(QLabel("View"))
-        add_sidebar_button(layout, "Zoom to fit", lambda: self.do_zoom_to_fit())
+        ### VIEW
+        # add_group_separator(layout)
+        view_box = CollapsibleBox("View", open=False)
+        layout.addWidget(view_box)
+
+        add_sidebar_button(view_box, "Zoom to fit", lambda: self.do_zoom_to_fit())
         self.canvas.show_background = QCheckBox("Show Original")
         self.canvas.show_background.setChecked(False)
         self.canvas.show_background.clicked.connect(lambda: self.canvas.render())
-        layout.addWidget(self.canvas.show_background)
+        view_box.addWidget(self.canvas.show_background)
 
         self.dropdown_changed(self.method_choice)
 
@@ -235,11 +251,11 @@ class MainWindow(QMainWindow):
         # For the label distance, needs to be set in canvas also
         if slider_set==0: 
             if slider==0: 
-                self.canvas.label_dist = value * tick_size
-                self.do_layout()
-            if slider==1: 
                 for edge in self.canvas.network.edges: 
                     edge.min_dist = value * tick_size
+                self.do_layout()
+            if slider==1: 
+                self.canvas.label_dist = value * tick_size
                 self.do_layout()
         elif slider_set==3: 
             if slider == 0: 
@@ -301,7 +317,7 @@ class MainWindow(QMainWindow):
             self.do_layout()
 
     def do_layout(self):
-        if layout.layout_lp(self.canvas.network, label_dist=self.slider_values[0][0]) is False:
+        if layout.layout_lp(self.canvas.network, label_dist=self.slider_values[0][1]) is False:
             print( "user\t"+"Failed to realize layout.")
             m = QMessageBox()
             m.setText("Failed to realize layout.")
@@ -326,7 +342,16 @@ class MainWindow(QMainWindow):
         self.canvas.render()
 
     def do_fix_label_overlap(self): 
-        port_assign.post_fix_overlap_ilp_new(self.canvas.network, self.slider_values[0][0])
+        success = port_assign.post_fix_overlap_ilp_new(self.canvas.network, self.slider_values[0][1])
+        if success: 
+            self.do_layout()
+            self.canvas.history_checkpoint("Fix label overlap")
+        else: 
+            m = QMessageBox()
+            m.setText("Failed to realize layout without overlap.")
+            m.setIcon(QMessageBox.Warning)
+            m.setStandardButtons(QMessageBox.Ok)
+            m.exec()
 
         ##### Brute force solution ######
         # overlaps = self.canvas.network.check_label_overlaps()
@@ -343,7 +368,7 @@ class MainWindow(QMainWindow):
         #                 found = True 
         #                 break 
         #         if found: break 
-        self.do_layout()
+        
 
     def do_render(self, tag=None):
         if self.canvas.filedata is None:
@@ -492,6 +517,7 @@ class GroupListItem(QWidget):
         
         top_row.addWidget(self.icon_widget)
         top_row.addWidget(self.label, 1)
+        top_row.addStretch()
         top_row.addWidget(self.remove_button)
 
         outer.addLayout(top_row)
@@ -523,17 +549,28 @@ class GroupListItem(QWidget):
         self.adjustSize()
 
     def update_style(self):
+
+        palette = QApplication.palette()
+        is_dark = palette.color(QPalette.Window).lightness() < 128
+
+        selected = "#FFFFFF"
+        not_selected = "lightgray"
+
+        if not is_dark:
+            selected = "black"
+            not_selected = "#777777" 
+
         if self.current_selected:
-            self.setStyleSheet("""
-                QLabel {
-                    color: white;
-                }
+            self.setStyleSheet(f"""
+                QLabel {{
+                    color: {selected};
+                }}
             """)
         else:
-            self.setStyleSheet("""
-                QLabel {
-                    color: lightgray;
-                }
+            self.setStyleSheet(f"""
+                QLabel {{
+                    color: {not_selected};
+                }}
             """)
     
         # Hacky way to determine whether we click the label/icon or the remove button
@@ -686,3 +723,82 @@ class GroupList(QListWidget):
 
         total += (self.layout.count() - 1) * self.layout.spacing()
         self.setFixedHeight(total)
+
+class CollapsibleBox(QWidget):
+    def __init__(self, title="", open=True, parent=None):
+        super().__init__(parent)
+
+        ### Header
+        self.toggle_button = QToolButton()
+        self.toggle_button.setCheckable(True)
+        self.toggle_button.setChecked(open)
+        self.toggle_button.setArrowType(Qt.DownArrow)
+        self.toggle_button.setFixedSize(12, 12)
+        self.toggle_button.clicked.connect(self.on_toggled)
+        self.toggle_button.setStyleSheet("""
+            QToolButton {
+                border: none;
+                background: transparent;
+            }
+        """)
+
+        self.title_label = QLabel(title)
+
+        self.header = QWidget()
+        header_layout = QHBoxLayout(self.header)
+        header_layout.setContentsMargins(5, 5, 5, 0)
+
+        header_layout.addWidget(self.toggle_button)
+        header_layout.addWidget(self.title_label)
+        header_layout.addStretch()
+
+        self.header.mousePressEvent = self.header_clicked
+
+        ### Line
+        line = QFrame()
+        line.setFrameShape(QFrame.HLine)
+        line.setFrameShadow(QFrame.Sunken)
+        line.setContentsMargins(0, 0, 0, 0)
+
+        ### Content
+        self.content = QWidget()
+        self.content_layout = QVBoxLayout(self.content)
+        self.content_layout.setContentsMargins(5, 0, 5, 5)
+
+        ### Layout
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.addWidget(self.header) 
+        main_layout.addWidget(line)
+        main_layout.addWidget(self.content)
+
+        palette = QApplication.palette()
+        is_dark = palette.color(QPalette.Window).lightness() < 128
+
+        bg = "#212121" if is_dark else "#FFFFFF"
+
+        self.setObjectName("collapsibleBox")
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setStyleSheet(f"""
+            QWidget#collapsibleBox {{
+                background-color: {bg};
+            }}
+        """)
+
+        self.on_toggled(open)
+
+    def header_clicked(self, event):
+        self.toggle_button.toggle()
+        self.on_toggled(self.toggle_button.isChecked())
+
+    def on_toggled(self, checked):
+        self.content.setVisible(checked)
+        self.toggle_button.setArrowType(
+            Qt.DownArrow if checked else Qt.RightArrow
+        )
+
+    def addWidget(self, widget):
+        self.content_layout.addWidget(widget)
+
+    def addLayout(self, layout):
+        self.content_layout.addLayout(layout)

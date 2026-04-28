@@ -3,6 +3,8 @@ from time import perf_counter
 
 from elements.network import *
 
+from elements.group import Group
+
 ### GEOGRAPHIC COST CALCULATIONS ###
 
 import numpy as np
@@ -291,10 +293,137 @@ def post_fix_overlap_ilp_new(net: Network, label_dist):
         for p in range(8): 
             for a_name, b_name in zip(line, line[1:]): 
                 a, b = net.nodes[a_name], net.nodes[b_name]
+                penalty_strength = max(a.label_same_side, b.label_same_side)
                 penalty = solver.BoolVar(f'label_{a.name}_{b.name}')
-                objective += 10 * penalty
+                objective += penalty_strength * penalty
                 if p in portvars_labels[a].keys() and p in portvars_labels[b].keys(): 
                     solver.Add( penalty >= portvars_labels[a][p] - portvars_labels[b][p])
+        
+        # needed to express that when keys are missing (aka label placement is impossible we also get a penalty)
+        # for a_name in line: 
+        #     for b_name in line: 
+        #         if a_name == b_name: continue 
+        #         a, b = net.nodes[a_name], net.nodes[b_name]
+        #         for p in portvars_labels[a].keys():
+        #             if p not in portvars_labels[b].keys(): 
+        #                 penalty_strength = max(a.label_same_side, b.label_same_side)
+        #                 penalty = solver.BoolVar(f'label_imp_{a.name}_{b.name}')
+        #                 objective += penalty_strength * penalty
+        #                 solver.Add( penalty >= portvars_labels[a][p])
+    
+    start_2 = perf_counter()
+    runtime_p1 = start_2-start_1
+    print( "plf-calc\t Post-Label overlap fix pre-processing runtime\t" + str(runtime_p1) )
+    
+    solver.Minimize(objective)
+    status = solver.Solve()
+    runtime_p2 = perf_counter()-start_2
+    total_runtime = perf_counter()-start_1
+    print( "plf-ilp\t Post-Label overlap fix ILP runtime (s)\t" + str(runtime_p2) )
+    print( 'Post-Label overlap fix ILP runtime', total_runtime, 's' )
+    print( 'Solver status', status )
+    if status==0:
+        for v, port_vars in portvars_labels.items(): 
+            for p, port_var in port_vars.items():
+                if port_var.solution_value() > 0.5 and p != v.label_node.port: 
+                    v.evict_label()
+                    v.assign_label(p)
+        return True 
+    else:
+        print( 'Port assignment ILP infeasible' )
+        print( "stats\tPort assignment ILP infeasible" )
+        return False
+
+def post_fix_overlap_ilp_group(net: Network, label_dist, group: Group):
+    
+    solver: lp.Solver = lp.Solver.CreateSolver("SCIP")
+
+    start_1 = perf_counter()
+    objective = solver.Sum([])
+    portvars_labels: dict[Node, dict[int, any]] = dict()
+
+    for vi, v in enumerate(group.nodes):
+        costs = cost_matrix_labels(v, net.midpoint.x(), old_node=v)
+
+        #### For labeling ####
+        free_ports = v.get_free_ports()
+        possible_ports = free_ports + [v.label_node.port]
+        
+        # portvars_label is a dictionairy with the portnumber as key and the boolvar as value
+        portvars_label: dict[int, any] = {}
+        for p in possible_ports: 
+            portvars_label[p] = solver.BoolVar(f'label_{v.name}_{p}')
+        
+        for p in possible_ports:
+            objective += costs[len(costs)-1,p] * portvars_label[p]
+
+        # Pick one port for each label 
+        solver.Add( solver.Sum(portvars_label.values())==1 )
+        portvars_labels[v] = portvars_label   
+
+        # Penalty if we choose a different port then previously assigned 
+        # for port, port_var in portvars_label.items():
+        #     if port == v.label_node.port: continue 
+        #     penalty = solver.BoolVar(f'different_label_{v.name}_{port}')
+        #     objective += penalty
+        #     solver.Add( penalty >= port_var)
+
+    # pre-calculation of label rectangles (speeds up the process!!)
+    rects: dict[Node, dict[int, QPolygonF]] = {}
+    for v in group.nodes: 
+        rects[v] = {}
+        for p in portvars_labels[v]:
+            rects[v][p] = v.label_node.get_rectangle_port(p, label_dist=label_dist)
+    other_rects: list[QPolygonF] = [v.label_node.rectangle_points for v in net.nodes.values() if v not in group.nodes]
+    
+    # Express that when two labels will overlap in a particular configuration, that it is impossible to get that configuration
+    for v1 in group.nodes: 
+        # loop trough they keys of the dictionariy which are port integers 
+        for p_v1 in portvars_labels[v1]:
+
+            rect_self = rects[v1][p_v1]
+
+            # Check overlap with edges 
+            if net.edges_overlaps_label(rect_self): 
+                solver.Add(portvars_labels[v1][p_v1] == 0)
+                continue 
+
+            # Check overlap with other labels 
+            for v2 in group.nodes: 
+                if v1.name == v2.name: continue 
+                # loop trough they keys of the dictionariy which are port integers
+                for p_v2 in portvars_labels[v2]:
+                    rect_other = rects[v2][p_v2]
+                    if rect_self.intersects(rect_other):
+                        solver.Add(portvars_labels[v1][p_v1] + portvars_labels[v2][p_v2] <= 1)
+
+            # There should be no overlap with any other label in the network 
+            for rect in other_rects: 
+                if rect_self.intersects(rect): 
+                    solver.Add(portvars_labels[v1][p_v1] <= 0)
+
+    for line in group.deg_2_lines: 
+        if len(line[0].edges) > 2: line.pop(0)
+        if len(line[len(line) - 1].edges) > 2: line.pop(len(line) - 1)
+        for p in range(8): 
+            for a, b in zip(line, line[1:]): 
+                penalty_strength = max(a.label_same_side, b.label_same_side)
+                penalty = solver.BoolVar(f'label_{a.name}_{b.name}')
+                objective += penalty_strength * penalty
+                if p in portvars_labels[a].keys() and p in portvars_labels[b].keys(): 
+                    solver.Add( penalty >= portvars_labels[a][p] - portvars_labels[b][p])
+
+        # needed to express that when keys are missing (aka label placement is impossible we also get a penalty)
+        for a in line: 
+            for b in line: 
+                if a == b: continue 
+                for p in portvars_labels[a].keys():
+                    if p not in portvars_labels[b].keys(): 
+                        penalty_strength = max(a.label_same_side, b.label_same_side)
+                        penalty = solver.BoolVar(f'label_imp_{a.name}_{b.name}')
+                        objective += penalty_strength * penalty
+                        solver.Add( penalty >= portvars_labels[a][p])
+                    
     
     start_2 = perf_counter()
     runtime_p1 = start_2-start_1
@@ -317,7 +446,7 @@ def post_fix_overlap_ilp_new(net: Network, label_dist):
         print( 'Port assignment ILP infeasible' )
         print( "stats\tPort assignment ILP infeasible" )
 
-def post_fix_overlap_ilp(net: Network, label_dist, label_hor_strength): 
+def post_fix_overlap_ilp_old(net: Network, label_dist): 
 
     overlaps = net.check_label_overlaps()
 
@@ -327,7 +456,7 @@ def post_fix_overlap_ilp(net: Network, label_dist, label_hor_strength):
     portvars_labels = dict()
 
     for vi, v in enumerate(net.nodes.values()):
-        costs = cost_matrix_labels(v, label_hor_strength, net.midpoint.x(), old_node=v)
+        costs = cost_matrix_labels(v, net.midpoint.x(), old_node=v)
 
         free_ports = v.get_free_ports() + [v.label_node.port]
         
