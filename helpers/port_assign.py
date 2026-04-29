@@ -414,15 +414,15 @@ def post_fix_overlap_ilp_group(net: Network, label_dist, group: Group):
                     solver.Add( penalty >= portvars_labels[a][p] - portvars_labels[b][p])
 
         # needed to express that when keys are missing (aka label placement is impossible we also get a penalty)
-        for a in line: 
-            for b in line: 
-                if a == b: continue 
-                for p in portvars_labels[a].keys():
-                    if p not in portvars_labels[b].keys(): 
-                        penalty_strength = max(a.label_same_side, b.label_same_side)
-                        penalty = solver.BoolVar(f'label_imp_{a.name}_{b.name}')
-                        objective += penalty_strength * penalty
-                        solver.Add( penalty >= portvars_labels[a][p])
+        # for a in line: 
+        #     for b in line: 
+        #         if a == b: continue 
+        #         for p in portvars_labels[a].keys():
+        #             if p not in portvars_labels[b].keys(): 
+        #                 penalty_strength = max(a.label_same_side, b.label_same_side) / 10
+        #                 penalty = solver.BoolVar(f'label_imp_{a.name}_{b.name}')
+        #                 objective += penalty_strength * penalty
+        #                 solver.Add( penalty >= portvars_labels[a][p])
                     
     
     start_2 = perf_counter()
