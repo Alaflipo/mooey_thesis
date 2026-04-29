@@ -28,7 +28,7 @@ port_offset = [ QPointF(-1,0)
 
 class Group: 
 
-    def __init__(self, nodes: list[Node], name: str = '', color = None):
+    def __init__(self, nodes: list[Node], name: str = '', color = None, bend=0, hor=0, same_side=0):
         self.nodes: list[Node] = nodes 
         self.conn_edges: list[Edge] = []
         self.conn_nodes: list[Node] = []
@@ -57,9 +57,9 @@ class Group:
         self.hover_label_port: int | None = None 
 
         # Slider values 
-        self.bend_pentalty: float = 0
-        self.label_hor: float = 0 
-        self.label_same_side: float = 0
+        self.bend_pentalty: float = bend
+        self.label_hor: float = hor
+        self.label_same_side: float = same_side
 
         self.show_labels: bool = False 
 
@@ -91,7 +91,11 @@ class Group:
     def clone(self, network: Network) -> Group:
         group_node_names = [group_node.name for group_node in self.nodes]
         new_group_nodes = [v for v in network.nodes.values() if v.name in group_node_names]
-        return Group(new_group_nodes, name=self.name, color=self.color)
+        new_group = Group(new_group_nodes, name=self.name, color=self.color)
+        new_group.bend_pentalty = self.bend_pentalty
+        new_group.label_hor = self.label_hor
+        new_group.label_same_side = self.label_same_side
+        return new_group
 
     def can_be_moved(self) -> bool: 
         return len(self.conn_nodes) > 0
@@ -389,6 +393,10 @@ class Group:
         return True 
     
     def is_circular(self): 
+
+        # can't have a cycle when terhe are les then 3 nodes
+        if len(self.nodes) <= 2: return False 
+
         # every node must have degree 2
         for node in self.nodes:
             if len(self.internal[node]) != 2:

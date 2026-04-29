@@ -3,11 +3,11 @@ from PySide6.QtGui import Qt, QAction, QKeySequence, QPolygonF, QIcon, QPixmap, 
 from PySide6.QtCore import QPointF, QSize, Signal
 
 import datetime
-
-import pickle
+import copy 
 
 from elements.canvas import Canvas
-from elements.network import Node 
+from elements.network import Node, Network
+from elements.group import Group 
 from elements.bend_dialog import BendPenaltyDialog
 
 import helpers.port_assign as port_assign 
@@ -47,7 +47,7 @@ class MainWindow(QMainWindow):
         self.scroll_area.setWidget(sidebar)
 
         # --- Right canvas ---
-        self.canvas = Canvas()
+        self.canvas = Canvas(self.history_checkpoint)
 
         root.addWidget(self.scroll_area)
         root.addWidget(self.canvas) 
@@ -60,6 +60,10 @@ class MainWindow(QMainWindow):
         self.selection_modes = [("Rectangle", "square_select.png"), ("Lasso", "lasso_select.svg"), ("Brush", "brush_select.png")]
         self.selection_buttons = {}
 
+        # history buffer
+        self.history: list[tuple[str, Network]] = []
+        self.history_index = -1
+
         self.construct_sidebar(button_layout)
         self.construct_menubar()
         button_layout.addStretch()
@@ -68,8 +72,8 @@ class MainWindow(QMainWindow):
         self.label_strength: float = 0.1
 
         self.do_port_assign()
-        self.canvas.history_checkpoint( "Initial drawing" )
-        self.canvas.update_history_actions()
+        self.history_checkpoint( "Initial drawing" )
+        self.update_history_actions()
     
     def construct_sidebar(self, layout):
         
@@ -111,9 +115,10 @@ class MainWindow(QMainWindow):
         self.hor_buttons.buttonClicked.connect(self.selection_mode_changed)
 
         # Color items representing each line 
-        self.group_list = GroupList(self.canvas, select_buttons=self.hor_buttons)
+        self.group_list = GroupList(self.canvas, self.history_checkpoint, select_buttons=self.hor_buttons)
         layout.addWidget(self.group_list)
         add_sidebar_button(layout, "Add Group", self.add_group_selection)
+        add_sidebar_button(layout, "GO!", lambda: self.go_button_clicked())
         add_sidebar_button(layout, "Fix label overlap", lambda: self.do_fix_label_overlap())
 
         #### PORT ASSIGNMENT
@@ -146,8 +151,8 @@ class MainWindow(QMainWindow):
         # add_sidebar_button(layout, "GO!", lambda: self.do_port_assign())
         
         # Auto update port assignment 
-        # self.auto_update_port = QCheckBox("Auto-update Ports")
-        # self.auto_update_port.setChecked(True)
+        self.auto_update_port = QCheckBox("Auto-update Ports")
+        self.auto_update_port.setChecked(True)
         # layout.addWidget(self.auto_update_port)
 
         # evict port assignment choice 
@@ -206,7 +211,7 @@ class MainWindow(QMainWindow):
 
     def go_button_clicked(self): 
         self.do_port_assign()
-        self.canvas.history_checkpoint('Automatic port assignment')
+        self.history_checkpoint('Automatic port assignment')
 
     def selection_mode_changed(self, button: QPushButton):
         self.group_list.clear_selection()
@@ -240,6 +245,7 @@ class MainWindow(QMainWindow):
         slider_index = len(self.sliders[slider_set])
         slider.valueChanged.connect(lambda x: self.update_slider_value(x, slider_set, slider_index, tick_size))
         slider.sliderReleased.connect(lambda: self.on_slider_release(text, slider_set))
+
         layout.addWidget(slider)
         
         self.sliders[slider_set].append((label, slider))
@@ -272,8 +278,8 @@ class MainWindow(QMainWindow):
             self.do_port_assign()
 
     def on_slider_release(self, text: str, slider_set: int): 
-        if slider_set == 0: self.canvas.history_checkpoint(f"Altered layout by changing {text}")
-        else: self.canvas.history_checkpoint(f"Altered port assignment by {text}")
+        if slider_set == 0: self.history_checkpoint(f"Altered layout by changing {text}")
+        else: self.history_checkpoint(f"Altered port assignment by {text}")
 
     def add_group_selection(self): 
         name, ok = QInputDialog.getText(self, "Enter name", "Name:")
@@ -309,7 +315,7 @@ class MainWindow(QMainWindow):
 
     def do_assign_reset(self):
         self.canvas.network.evict_all_edges()
-        self.canvas.history_checkpoint("Evict all")
+        self.history_checkpoint("Evict all")
         self.canvas.render()
 
     def update_layout_if_auto(self):
@@ -326,10 +332,10 @@ class MainWindow(QMainWindow):
             m.exec()
         else: 
             self.canvas.network.layout_set = True 
-        if self.canvas.drawing_is_completely_oob():
-            self.canvas.zoom_to_network()
-            self.canvas.network.set_background_image()
-        self.canvas.render()
+            if self.canvas.drawing_is_completely_oob():
+                self.canvas.zoom_to_network()
+                self.canvas.network.set_background_image()
+            self.canvas.render()
 
     def do_reset_layout(self):
         self.canvas.network.layout_set = False 
@@ -338,14 +344,14 @@ class MainWindow(QMainWindow):
         for e in self.canvas.network.edges:
             e.bend = None
         self.canvas.zoom_to_network()
-        self.canvas.history_checkpoint("Reset layout")
+        self.history_checkpoint("Reset layout")
         self.canvas.render()
 
     def do_fix_label_overlap(self): 
         success = port_assign.post_fix_overlap_ilp_new(self.canvas.network, self.slider_values[0][1])
         if success: 
             self.do_layout()
-            self.canvas.history_checkpoint("Fix label overlap")
+            self.history_checkpoint("Fix label overlap")
         else: 
             m = QMessageBox()
             m.setText("Failed to realize layout without overlap.")
@@ -406,19 +412,86 @@ class MainWindow(QMainWindow):
         # Edit menu
         edit_menu = menu_bar.addMenu("Edit")
         ## TODO: Fix self.canvas.undo_action ... does not make sense at the moment 
-        self.canvas.undo_action = QAction("Undo", self)
-        edit_menu.addAction(self.canvas.undo_action)
-        self.canvas.undo_action.setShortcut(QKeySequence('Ctrl+Z'))
-        self.canvas.undo_action.triggered.connect(self.canvas.undo)
-        self.canvas.redo_action = QAction("Redo", self)
-        edit_menu.addAction(self.canvas.redo_action)
-        self.canvas.redo_action.setShortcut(QKeySequence('Ctrl+Shift+Z'))
-        self.canvas.redo_action.triggered.connect(self.canvas.redo)
+        self.undo_action = QAction("Undo", self)
+        edit_menu.addAction(self.undo_action)
+        self.undo_action.setShortcut(QKeySequence('Ctrl+Z'))
+        self.undo_action.triggered.connect(self.undo)
+        self.redo_action = QAction("Redo", self)
+        edit_menu.addAction(self.redo_action)
+        self.redo_action.setShortcut(QKeySequence('Ctrl+Shift+Z'))
+        self.redo_action.triggered.connect(self.redo)
 
     def open_file(self): 
-        self.canvas.open_dialog()
-        self.group_list.add_current_metro_lines()
-        self.group_list.update_height()
+        file_name = self.canvas.open_dialog()
+
+        if file_name: 
+            self.group_list.remove_all_items()
+            self.group_list.add_current_metro_lines()
+            self.group_list.update_height()
+            self.history_checkpoint( f'Open "{file_name}"' )
+        else: 
+            print('Unable to open file')
+
+    def undo(self):
+        # Assumes we don't undo to before the start of time
+        print("user\t"+"Undo")
+        self.history_index -= 1
+        self.fetch_history()
+        self.update_history_actions()
+        self.canvas.render()
+    
+    def redo(self):
+        # Assumes the future exists
+        print("user\t"+"Redo")
+        self.history_index += 1
+        self.fetch_history()
+        self.update_history_actions()
+        self.canvas.render()
+    
+    def update_history_actions(self):
+        # Set the text and availability of the "undo" menu item based on where we are in time now.
+        if self.history_index<1:
+            self.undo_action.setEnabled(False)
+            self.undo_action.setText("Undo")
+        else:
+            self.undo_action.setEnabled(True)
+            self.undo_action.setText( "Undo " + self.history[self.history_index][0] )
+
+        if self.history_index==len(self.history)-1:
+            self.redo_action.setEnabled(False)
+            self.redo_action.setText("Redo")
+        else:
+            self.redo_action.setEnabled(True)
+            self.redo_action.setText( "Redo " + self.history[self.history_index+1][0] )
+    
+    def history_checkpoint(self, text):
+        # Log the message
+        print( "user\t"+text )
+        # Delete the future
+        self.history = self.history[0:self.history_index+1]
+        
+        # Add the present
+        current_network, current_group, current_groups = self.canvas.get_present_state()
+        current_slider_values = [slider_set[:] for slider_set in self.slider_values]
+        self.history.append(( text, current_network, current_group, current_groups, current_slider_values))
+        
+        self.history_index += 1
+        self.update_history_actions()
+    
+    def fetch_history(self):
+        print(f'fetched - {self.history[self.history_index][0]}')
+        self.canvas.set_history(self.history[self.history_index])
+
+        # set sliders
+        for set_index, slider_set in enumerate(self.history[self.history_index][4]): 
+            for slider, value in enumerate(slider_set):
+                self.slider_values[set_index][slider] = value
+                self.sliders[set_index][slider][1].setValue(value)
+        
+        # set group sliders 
+        self.group_list.set_groups(self.history[self.history_index][3], self.history[self.history_index][2])
+
+        if self.history_index == 0: self.canvas.zoom_to_network()
 
 def add_sidebar_button(layout, text, action):
     button = QPushButton(text)
@@ -582,7 +655,7 @@ class GroupListItem(QWidget):
 
 class GroupList(QListWidget):
 
-    def __init__(self, canvas: Canvas, select_buttons, parent=None):
+    def __init__(self, canvas: Canvas, history_checkpoint, select_buttons, parent=None):
         super().__init__(parent)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
@@ -594,6 +667,7 @@ class GroupList(QListWidget):
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.layout.setSpacing(4)
 
+        self.history_checkpoint = history_checkpoint
         self.canvas = canvas 
         self.select_buttons = select_buttons
 
@@ -658,6 +732,19 @@ class GroupList(QListWidget):
         self.canvas.handle_group_select(None)
         self.update_height()
 
+    def set_groups(self, groups, selected_group): 
+        self.remove_all_items() 
+        for i, group in enumerate(groups): 
+            name = group[0][0]
+            color = group[0][1]
+            if color: 
+                self.add_entry("Metro Line", name, color)
+            else: 
+                self.add_entry(name, name, color)
+        if selected_group: 
+            if selected_group[0][0] in self.items: 
+                self.select_item(selected_group[0][0])
+
     def remove_item(self, item_id):
         # remove the item from the list 
         widget = self.items.pop(item_id, None)
@@ -707,7 +794,7 @@ class GroupList(QListWidget):
             elif id == 1: text = "label horizontal weight"
             elif id == 2: text = "same side weight"
             else: text = ''
-            self.canvas.history_checkpoint(f"Port assignement by changing local {text}")
+            self.history_checkpoint(f"Port assignement by changing local {text}")
             self.canvas.render()
     
     def update_height(self):

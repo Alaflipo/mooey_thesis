@@ -34,7 +34,7 @@ port_offset = [ QPointF(-1,0)
               ]
 
 class Canvas(QWidget):
-    def __init__(self):
+    def __init__(self, history_checkpoint):
         super().__init__()
         self.pixmap = QPixmap( self.size() )
         self.pixmap.fill( QColor('white') )
@@ -42,9 +42,9 @@ class Canvas(QWidget):
         self.setMouseTracking(True)
         self.grabGesture(Qt.PinchGesture)
 
-        # history buffer
-        self.history: list[tuple[str, Network]] = []
-        self.history_index = -1
+        # to create a history checkpoint
+        self.history_checkpoint = history_checkpoint
+
         self.station_added = 0
         self.there_was_change = False 
 
@@ -899,8 +899,9 @@ class Canvas(QWidget):
             self.handle_scale_at(pinch.centerPoint(), pinch.scaleFactor())
             self.render()
 
-    def open_dialog(self):
+    def open_dialog(self) -> str:
         file_name, _ = QFileDialog.getOpenFileName(None, 'Open File', '', 'All Files (*)')
+
         if file_name:
             if file_name[-8:]==".graphml":
                 self.network = read_network_from_graphml(file_name)
@@ -918,9 +919,10 @@ class Canvas(QWidget):
             self.network.calculate_mid_point()
             self.network.find_min_max_geo()
             self.network.divide_in_lines()
-            self.history_checkpoint( f'Open "{file_name}"' )
             self.zoom_to_network()
             self.render()
+
+        return file_name
         
     def create_image(self):
         scale = 6 # could increase resotion
@@ -951,71 +953,34 @@ class Canvas(QWidget):
         file_path = write_mooey_file(self.network)
         print(f"Saved to {file_path}")
     
-    def history_checkpoint(self, text):
-        # Log the message
-        print( "user\t"+text )
-        # Delete the future
-        self.history = self.history[0:self.history_index+1]
-        
-        # Add the present
+    def get_present_state(self) -> tuple: 
         current_network = self.network.clone()
         current_group = [] 
         if self.group: 
-            current_group = [(self.group.name, self.group.color)]
+            current_group = [(self.group.name, self.group.color, self.group.bend_pentalty, self.group.label_hor, self.group.label_same_side)]
             current_group += [node.name for node in self.group.nodes]
         current_groups = []
         for group_name, group in self.groups.items(): 
-            new_group = [(group_name, group.color)]
+            new_group = [(group_name, group.color, group.bend_pentalty, group.label_hor, group.label_same_side)]
             new_group += [node.name for node in group.nodes]
             current_groups.append(new_group)
+        
+        return (current_network, current_group, current_groups)
 
-        self.history.append(( text, current_network, current_group, current_groups ))
-        self.history_index += 1
-        self.update_history_actions()
-
-    def update_history_actions(self):
-        # Set the text and availability of the "undo" menu item based on where we are in time now.
-        if self.history_index<1:
-            self.undo_action.setEnabled(False)
-            self.undo_action.setText("Undo")
-        else:
-            self.undo_action.setEnabled(True)
-            self.undo_action.setText( "Undo " + self.history[self.history_index][0] )
-
-        if self.history_index==len(self.history)-1:
-            self.redo_action.setEnabled(False)
-            self.redo_action.setText("Redo")
-        else:
-            self.redo_action.setEnabled(True)
-            self.redo_action.setText( "Redo " + self.history[self.history_index+1][0] )
-
-    def undo(self):
-        # Assumes we don't undo to before the start of time
-        print("user\t"+"Undo")
-        self.history_index -= 1
-        self.fetch_history()
-        self.update_history_actions()
-        self.render()
-    
-    def redo(self):
-        # Assumes the future exists
-        print("user\t"+"Redo")
-        self.history_index += 1
-        self.fetch_history()
-        self.update_history_actions()
-        self.render()
-    
-    def fetch_history(self):
-        print(f'fetched - {self.history[self.history_index][0]}')
-        self.network = self.history[self.history_index][1].clone()
+    def set_history(self, history): 
+        self.network: Network = history[1].clone()
         self.group = None
-        selected_group = self.history[self.history_index][2]
+
+        selected_group = history[2]
         if selected_group != None and len(selected_group) > 0: 
             nodes = [node for node in self.network.nodes.values() if node.name in selected_group[1:]]
-            self.group = Group(nodes, selected_group[0][0], selected_group[0][1])
+            if len(nodes) > 0: 
+                self.group = Group(nodes, selected_group[0][0], selected_group[0][1], bend=selected_group[0][2], hor=selected_group[0][3], same_side=selected_group[0][4])
+        
         self.groups = {}
-        for group in self.history[self.history_index][3]: 
+        for group in history[3]: 
             nodes = [node for node in self.network.nodes.values() if node.name in group[1:]]
-            self.groups[group[0][0]] = Group(nodes, group[0][0], group[0][1])
-
-        if self.history_index == 0: self.zoom_to_network()
+            if len(nodes) > 0: 
+                self.groups[group[0][0]] = Group(nodes, group[0][0], group[0][1],  bend=group[0][2], hor=group[0][3], same_side=group[0][4])
+       
+            
