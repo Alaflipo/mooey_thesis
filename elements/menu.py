@@ -118,7 +118,7 @@ class MainWindow(QMainWindow):
         self.group_list = GroupList(self.canvas, self.history_checkpoint, select_buttons=self.hor_buttons)
         layout.addWidget(self.group_list)
         add_sidebar_button(layout, "Add Group", self.add_group_selection)
-        add_sidebar_button(layout, "GO!", lambda: self.go_button_clicked())
+        add_sidebar_button(layout, "Apply globally", lambda: self.go_button_clicked())
         add_sidebar_button(layout, "Fix label overlap", lambda: self.do_fix_label_overlap())
 
         #### PORT ASSIGNMENT

@@ -64,7 +64,6 @@ def render_network( painter: QPainter, net: Network, show_background: bool, labe
     for e in net.edges:
         # distance between each line with stroke set at 2
         line_spacing = 4 
-
         for i in range(len(e.color)):
             ui.edge_pen.setColor(QColor('#' + e.color[i]))
             painter.setPen(ui.edge_pen)
@@ -115,7 +114,8 @@ def render_network( painter: QPainter, net: Network, show_background: bool, labe
             if not e.free_at(e.v[1]):
                 path.lineTo(b_start)
 
-                painter.drawPath(path)
+            painter.drawPath(path)
+
 
     # For indicator lines of minimal edge length (should be done earlier because that looks prettier)
     if ui.hover_node and net.layout_set: 
@@ -238,7 +238,7 @@ def render_error_message(painter: QPainter, view: QTransform, text: str):
     viewport = painter.viewport()
     center_x = viewport.width() / 2
 
-    font = painter.font()
+    font = QFont("Arial", 15)
     font.setBold(True)
     painter.setFont(font)
 

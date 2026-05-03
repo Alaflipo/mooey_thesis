@@ -21,12 +21,12 @@ def cost_matrix( v: Node):
 # Two things to check for: 
 # - We give priority to labels that are horizontal so 0 and 4 and don't want 2 and 6 and for the odd numbers they should be equal
 # - We want labels that are on the outside to appear on the outside (either do this by a weighted middle point of the network or check whether labels point towards the outer face instead of an inner face)
-def cost_matrix_labels(v: Node, mid_point_x, old_node: Node): 
+def cost_matrix_labels(v: Node, mid_point_x): 
     port_angles = [ i*(pi/4) for i in range(8) ]
     edge_angles = []
     for i,e in enumerate(v.edges): 
-        if old_node.locked: 
-            edge_angles.append(port_angles[old_node.edges[i].port_at(old_node)])
+        if v.locked: 
+            edge_angles.append(port_angles[v.edges[i].port_at(v)])
         else: 
             edge_angles.append(e.geo_angle(v))
     # edge_angles = [ e.geo_angle(v) for e in v.edges ]
@@ -80,15 +80,17 @@ def assign_by_rounding( net: Network ):
 ### MATCHING ###
 
 from scipy.optimize import linear_sum_assignment
+
 def assign_by_local_matching( net: Network ):
-    net_clone = net.clone()
-    clone_nodes = list(net_clone.nodes.values())
+    all_costs = []
+    for vi, v in enumerate(net.nodes.values()):
+        # Cost matrix for labels
+        all_costs.append(cost_matrix_labels(v, net.midpoint.x()))
+
     net.evict_all_labels()
     net.evict_all_edges()
     for vi, v in enumerate(net.nodes.values()):
-        # Cost matrix for labels
-        costs = cost_matrix_labels(v, net.midpoint.x(), clone_nodes[vi])
-        _, cols = linear_sum_assignment(costs)
+        _, cols = linear_sum_assignment(all_costs[vi])
         for i,p in enumerate(cols[:-1]):
             v.assign( v.edges[int(i)], int(p) )
 
@@ -102,11 +104,6 @@ def assign_by_local_matching( net: Network ):
 
 from ortools.linear_solver import pywraplp as lp
 def assign_by_ilp( net: Network):
-    net_clone = net.clone()
-    clone_nodes = list(net_clone.nodes.values())
-    net.evict_all_labels()
-    net.evict_all_edges()
-
     # bend cost is relative to squared angle errors
 
     solver: lp.Solver = lp.Solver.CreateSolver("SCIP")
@@ -115,7 +112,7 @@ def assign_by_ilp( net: Network):
     portvars = dict()
     portvars_labels = dict()
     for vi, v in enumerate(net.nodes.values()):
-        costs = cost_matrix_labels(v, net.midpoint.x(), old_node=clone_nodes[vi])
+        costs = cost_matrix_labels(v, net.midpoint.x())
         for i,e in enumerate(v.edges):
             my_portvars = [solver.BoolVar(f'pass_{v.name}_{i}_{p}') for p in range(8)]
             for p in range(8):
@@ -192,6 +189,7 @@ def assign_by_ilp( net: Network):
     print( 'Port assignment ILP runtime', runtime, 's' )
     print( 'Solver status', status )
     if status==0:
+        net.evict_all_labels()
         net.evict_all_edges()
         for (v,e), x in portvars.items():
             for p in range(8):
@@ -234,7 +232,7 @@ def post_fix_overlap_ilp_new(net: Network, label_dist):
     portvars_labels: dict[Node, dict[int, any]] = dict()
 
     for vi, v in enumerate(net.nodes.values()):
-        costs = cost_matrix_labels(v, net.midpoint.x(), old_node=v)
+        costs = cost_matrix_labels(v, net.midpoint.x())
 
         #### For labeling ####
         free_ports = v.get_free_ports()
@@ -343,7 +341,7 @@ def post_fix_overlap_ilp_group(net: Network, label_dist, group: Group):
     portvars_labels: dict[Node, dict[int, any]] = dict()
 
     for vi, v in enumerate(group.nodes):
-        costs = cost_matrix_labels(v, net.midpoint.x(), old_node=v)
+        costs = cost_matrix_labels(v, net.midpoint.x())
 
         #### For labeling ####
         free_ports = v.get_free_ports()
@@ -456,7 +454,7 @@ def post_fix_overlap_ilp_old(net: Network, label_dist):
     portvars_labels = dict()
 
     for vi, v in enumerate(net.nodes.values()):
-        costs = cost_matrix_labels(v, net.midpoint.x(), old_node=v)
+        costs = cost_matrix_labels(v, net.midpoint.x())
 
         free_ports = v.get_free_ports() + [v.label_node.port]
         
