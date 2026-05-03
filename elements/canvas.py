@@ -54,7 +54,7 @@ class Canvas(QWidget):
         self.drag = False 
 
         # load a network
-        self.filename = 'loom-examples/wien.json'
+        self.filename = 'loom-examples/berlin.json'
         self.network, self.filedata = read_network_from_loom(self.filename)
         # self.network = example_network()
         # self.network = empty_network()
@@ -85,6 +85,8 @@ class Canvas(QWidget):
         # 0 = square, 1 = lasso, 2 = brush, 3 = line 
         self.selection_mode: int = 1
         self.color_selected: None | str = None 
+
+        self.error_message: None | str = None 
         
     def render(self):
         #self.network.clone()
@@ -111,6 +113,9 @@ class Canvas(QWidget):
 
         # render.render_concentric_circles(painter)
         render.render_highlighted_nodes(painter, self.affected_nodes)
+
+        if self.error_message != None: 
+            render.render_error_message(painter, view, self.error_message)
         
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -268,12 +273,9 @@ class Canvas(QWidget):
                     self.view.translate(self.mouse_pos.x() - ui.drag_node.pos.x(), self.mouse_pos.y() - ui.drag_node.pos.y())
                 if resolve_shift is False:
                     print('no shift')
-                    m = QMessageBox()
-                    m.setText("Failed to realise layout.")
-                    m.setIcon(QMessageBox.Warning)
-                    m.setStandardButtons(QMessageBox.Ok)
-                    m.exec()
+                    self.error_message = 'Failed to realise layout with current parameters.'
                 else: 
+                    self.error_message = None
                     if self.auto_render.isChecked():
                         export_loom(self.network,self.filedata)
                         render_loom( "render.json", "render.svg" )

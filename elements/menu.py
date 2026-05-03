@@ -79,7 +79,7 @@ class MainWindow(QMainWindow):
         
         add_group_separator(layout)
         title = QLabel("MOOEY")
-        title.setStyleSheet("font-weight: bold; color: #d83838; font-size: 47px")
+        title.setStyleSheet("font-weight: bold; color: rgb(180, 30, 30); font-size: 47px")
         layout.addWidget(title)
 
         add_group_separator(layout)
@@ -325,12 +325,14 @@ class MainWindow(QMainWindow):
     def do_layout(self):
         if layout.layout_lp(self.canvas.network, label_dist=self.slider_values[0][1]) is False:
             print( "user\t"+"Failed to realize layout.")
-            m = QMessageBox()
-            m.setText("Failed to realize layout.")
-            m.setIcon(QMessageBox.Warning)
-            m.setStandardButtons(QMessageBox.Ok)
-            m.exec()
+            self.canvas.error_message = 'Failed to realise layout with current parameters.'
+            # m = QMessageBox()
+            # m.setText("Failed to realize layout.")
+            # m.setIcon(QMessageBox.Warning)
+            # m.setStandardButtons(QMessageBox.Ok)
+            # m.exec()
         else: 
+            self.canvas.error_message = None
             self.canvas.network.layout_set = True 
             if self.canvas.drawing_is_completely_oob():
                 self.canvas.zoom_to_network()
