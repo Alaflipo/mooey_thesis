@@ -37,10 +37,10 @@ def render_network( painter: QPainter, net: Network, show_background: bool, labe
     # Coordinate system axes
     painter.setPen(QPen(QColor('lightgray'),10))
     painter.setFont(font)
-    painter.drawLine( 0, 0, 100, 0 )
-    painter.drawText( 130, 10, "x" )
-    painter.drawLine( 0, 0, 0, 100 )
-    painter.drawText( 1, 150, "y" )
+    # painter.drawLine( 0, 0, 100, 0 )
+    # painter.drawText( 130, 10, "x" )
+    # painter.drawLine( 0, 0, 0, 100 )
+    # painter.drawText( 1, 150, "y" )
 
     # Render background 
     if show_background: 

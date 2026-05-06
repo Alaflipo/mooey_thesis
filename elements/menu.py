@@ -79,7 +79,7 @@ class MainWindow(QMainWindow):
         
         add_group_separator(layout)
         title = QLabel("MOOEY")
-        title.setStyleSheet("font-weight: bold; color: rgb(180, 30, 30); font-size: 47px")
+        title.setStyleSheet("font-weight: bold; color: #d83838; font-size: 47px")
         layout.addWidget(title)
 
         add_group_separator(layout)
@@ -167,7 +167,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(layout_box)
 
         # general slider
-        self.add_slider(layout_box, "Min edge distance", 0, 150, 100, slider_set=0)
+        self.add_slider(layout_box, "Min edge length", 0, 150, 100, slider_set=0)
         self.add_slider(layout_box, "Label distance", 0, 50, 25, slider_set=0)
 
         # add_sidebar_button(layout, "Update layout", lambda: self.do_layout())
@@ -475,7 +475,8 @@ class MainWindow(QMainWindow):
         # Add the present
         current_network, current_group, current_groups = self.canvas.get_present_state()
         current_slider_values = [slider_set[:] for slider_set in self.slider_values]
-        self.history.append(( text, current_network, current_group, current_groups, current_slider_values))
+        current_error = self.canvas.error_message
+        self.history.append(( text, current_network, current_group, current_groups, current_slider_values, current_error))
         
         self.history_index += 1
         self.update_history_actions()
@@ -492,6 +493,9 @@ class MainWindow(QMainWindow):
         
         # set group sliders 
         self.group_list.set_groups(self.history[self.history_index][3], self.history[self.history_index][2])
+
+        # set error message 
+        self.canvas.error_message = self.history[self.history_index][5]
 
         if self.history_index == 0: self.canvas.zoom_to_network()
 
@@ -769,7 +773,7 @@ class GroupList(QListWidget):
             self.layout.removeWidget(widget)
             widget.deleteLater()
         self.items = {}
-        self.clear_selection()
+        # self.clear_selection()
     
     def handle_slider_change(self, item_id, slider_id, value): 
         if not self.canvas.group: 

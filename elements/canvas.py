@@ -54,7 +54,7 @@ class Canvas(QWidget):
         self.drag = False 
 
         # load a network
-        self.filename = 'loom-examples/berlin.json'
+        self.filename = 'loom-examples/wien.json'
         self.network, self.filedata = read_network_from_loom(self.filename)
         # self.network = example_network()
         # self.network = empty_network()
@@ -216,8 +216,8 @@ class Canvas(QWidget):
             self.handle_double_click()
 
         ### Experimental for adding extra nodes and edges 
-        if press and event.buttons() == Qt.LeftButton and event.modifiers() == Qt.ShiftModifier: 
-            self.handle_modifier_click()
+        # if press and event.buttons() == Qt.LeftButton and event.modifiers() == Qt.ShiftModifier: 
+        #     self.handle_modifier_click()
         
         ##### Handle everything when in drag mode #####
         if self.drag: 
@@ -784,7 +784,8 @@ class Canvas(QWidget):
                 # reassign edge if we are at the correct depth for reassignment
                 if closer_port != current_edge.port_at(neighbour) and i == affect_depth:
                     neighbour.assign_both_ends(current_edge, closer_port)
-                    self.network_change = (f'drag node - Reassign at "{current_node.label}" - "{neighbour.label}" to port {closer_port}')
+                    current_port = current_edge.port_at(neighbour)
+                    self.network_change = (f'drag node - Reassign at "{current_node.label}" - "{neighbour.label}" from port {current_port} to {closer_port}')
 
                 current_node = neighbour
                 # stop traversal if node is not deg 2

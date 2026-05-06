@@ -299,16 +299,50 @@ class Group:
             if vec.x() < self.button_size and vec.y() < -self.button_size: 
                 for edge in self.internal_edges: 
                     edge.min_dist += 1
+                    if edge.min_dist < edge.length(): 
+                        edge.min_dist = edge.length()
+                    if edge.max_dist and edge.max_dist < edge.min_dist: 
+                        edge.max_dist = edge.min_dist
             if vec.x() > -self.button_size and vec.y() > self.button_size: 
                 for edge in self.internal_edges: 
-                    edge.min_dist -= 1
+                    if not edge.max_dist: 
+                        edge.max_dist = edge.length()
+                    edge.max_dist -= 1
+                    if edge.max_dist < edge.min_dist: 
+                        edge.min_dist = edge.max_dist
         else: 
             if vec.x() > self.button_size and vec.y() < -self.button_size: 
                 for edge in self.internal_edges: 
                     edge.min_dist += 1
+                    if edge.min_dist < edge.length(): 
+                        edge.min_dist = edge.length()
+                    if edge.max_dist and edge.max_dist < edge.min_dist: 
+                        edge.max_dist = edge.min_dist
             if vec.x() < -self.button_size and vec.y() > self.button_size: 
                 for edge in self.internal_edges: 
-                    edge.min_dist -= 1
+                    if not edge.max_dist: 
+                        edge.max_dist = edge.length()
+                    edge.max_dist -= 1
+                    if edge.max_dist < edge.min_dist: 
+                        edge.min_dist = edge.max_dist
+
+        #### OLD VERSION WITH ONLY MIN_DIST: This provides more freedom but less precise manipulation
+
+        # vec = QVector2D(pos - self.expand_button_pos)
+        # if self.nodes[0].left_line: 
+        #     if vec.x() < self.button_size and vec.y() < -self.button_size: 
+        #         for edge in self.internal_edges: 
+        #             edge.min_dist += 1
+        #     if vec.x() > -self.button_size and vec.y() > self.button_size: 
+        #         for edge in self.internal_edges: 
+        #             edge.min_dist -= 1
+        # else: 
+        #     if vec.x() > self.button_size and vec.y() < -self.button_size: 
+        #         for edge in self.internal_edges: 
+        #             edge.min_dist += 1
+        #     if vec.x() < -self.button_size and vec.y() > self.button_size: 
+        #         for edge in self.internal_edges: 
+        #             edge.min_dist -= 1
 
     def check_locked_status(self) -> bool: 
         locked: int = 0 
