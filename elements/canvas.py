@@ -1,7 +1,7 @@
 import math
 
 from PySide6.QtWidgets import QWidget, QSizePolicy, QMenu, QMessageBox, QFileDialog
-from PySide6.QtGui import QPainter, QPixmap, QColor, Qt, QTransform, QVector2D, QPolygonF, QImage, QPainterPath
+from PySide6.QtGui import QPainter, QPixmap, QColor, Qt, QTransform, QVector2D, QPolygonF, QImage, QPainterPath, QPointingDevice
 from PySide6.QtCore import QPointF, QEvent, QSize, QRectF
 
 from io_management.fileformat_loom import read_network_from_loom, export_loom, render_loom, example_network, add_edge, empty_network
@@ -94,7 +94,7 @@ class Canvas(QWidget):
         self._render(painter, self.view)
         self.update()
 
-    def _render(self, painter, view):
+    def _render(self, painter, view, export=False):
         painter.setRenderHint(QPainter.Antialiasing)
         # viewport
         painter.setTransform(view)
@@ -102,7 +102,7 @@ class Canvas(QWidget):
         self.pixmap.fill( QColor('white') )
         ui.update_params( view.m11() ) # element [1,1] of the view matrix is scale in our case
         
-        render.render_network(painter, self.network, self.show_background.isChecked(), self.label_dist, self.group)
+        render.render_network(painter, self.network, self.show_background.isChecked(), self.label_dist, self.group, export=export)
         
         if self.group: 
             render.render_group(painter, self.group, self.move_group, self.pivot_group)
@@ -192,9 +192,9 @@ class Canvas(QWidget):
         # Check where the mouse pointer is close to 
         self.handle_currently_hovering()
 
-        ##### Handle everything by the middle mouse #####
+        ##### Handle panning of the view #####
         if event.buttons() == Qt.MiddleButton and self.old_mouse:
-            self.handle_pan()
+            self.handle_pan(event)
 
         ##### Handle everything by right click #####
         if event.buttons() == Qt.RightButton:
@@ -367,9 +367,16 @@ class Canvas(QWidget):
                         ui.hover_edge = e
                         ui.hover_empty_port = None
 
-    def handle_pan(self): 
-        drag = (self.mouse_pos - self.old_mouse) / self.view.m11() # account for view scale
-        self.view.translate( drag.x(), drag.y() ) 
+    def handle_pan(self, event): 
+        if self.is_trackpad_event(event): 
+            drag = (self.mouse_pos - self.old_mouse) / self.view.m11() # account for view scale
+        else: 
+            drag = (self.event_pos - self.old_mouse) / self.view.m11()
+        self.view.translate( drag.x(), drag.y() )
+
+    def is_trackpad_event(self, event) -> bool:
+        device = event.pointingDevice()
+        return device.type() == QPointingDevice.DeviceType.TouchPad
 
     def handle_menu_edge(self):
         """
@@ -909,10 +916,13 @@ class Canvas(QWidget):
             if file_name[-8:]==".graphml":
                 self.network = read_network_from_graphml(file_name)
                 self.filedata = None
+                self.filename = file_name[:-8]
             elif file_name[-5:] == ".json": 
                 self.network, self.filedata = read_network_from_loom(file_name)
+                self.filename = file_name[:-5]
             elif file_name[-6:] == '.mooey':
                 self.network = read_mooey_file(file_name)
+                self.filename = file_name[:-6]
             else: 
                 print('File format not supported!')
                 return 
@@ -947,7 +957,7 @@ class Canvas(QWidget):
         scaleAt = QTransform( scale,0, 0,scale, (1-scale)*pos.x(), (1-scale)*pos.y() )
         view = scaleAt * self.view
 
-        self._render(painter, view)       
+        self._render(painter, view, export=True)       
         painter.end()
 
         img.save(str(get_unique_filename(self.filename, extension='png')))

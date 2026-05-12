@@ -295,36 +295,32 @@ class Group:
     
     def expand(self, pos: QPointF): 
         vec = QVector2D(pos - self.expand_button_pos)
-        if self.nodes[0].left_line: 
-            if vec.x() < self.button_size and vec.y() < -self.button_size: 
-                for edge in self.internal_edges: 
-                    edge.min_dist += 1
-                    if edge.min_dist < edge.length(): 
-                        edge.min_dist = edge.length()
-                    if edge.max_dist and edge.max_dist < edge.min_dist: 
-                        edge.max_dist = edge.min_dist
-            if vec.x() > -self.button_size and vec.y() > self.button_size: 
-                for edge in self.internal_edges: 
-                    if not edge.max_dist: 
-                        edge.max_dist = edge.length()
-                    edge.max_dist -= 1
-                    if edge.max_dist < edge.min_dist: 
-                        edge.min_dist = edge.max_dist
-        else: 
-            if vec.x() > self.button_size and vec.y() < -self.button_size: 
-                for edge in self.internal_edges: 
-                    edge.min_dist += 1
-                    if edge.min_dist < edge.length(): 
-                        edge.min_dist = edge.length()
-                    if edge.max_dist and edge.max_dist < edge.min_dist: 
-                        edge.max_dist = edge.min_dist
-            if vec.x() < -self.button_size and vec.y() > self.button_size: 
-                for edge in self.internal_edges: 
-                    if not edge.max_dist: 
-                        edge.max_dist = edge.length()
-                    edge.max_dist -= 1
-                    if edge.max_dist < edge.min_dist: 
-                        edge.min_dist = edge.max_dist
+        size = self.button_size
+        is_left = self.nodes[0].left_line
+
+        expand = vec.y() < -size and (vec.x() < size if is_left else vec.x() > size)
+        shrink = vec.y() > size and (vec.x() > -size if is_left else vec.x() < -size)
+
+        if expand or shrink:
+            largest_edge = max(self.internal_edges, key=lambda edge: edge.length(), default=None)
+            for edge in self.internal_edges:
+                length = edge.length()
+                resize_factor = length / largest_edge.length()
+                error_margin = 1 / largest_edge.length()
+
+                if expand:
+                    if not edge.locked: edge.min_dist = length
+                    else: edge.min_dist = edge.min_dist + resize_factor
+                    edge.max_dist = edge.min_dist + error_margin
+
+                elif shrink:
+                    if not edge.max_dist:
+                        edge.max_dist = length
+                    edge.max_dist -= resize_factor
+                    edge.min_dist = edge.max_dist - error_margin
+
+            self.lock_edges()
+                
 
         #### OLD VERSION WITH ONLY MIN_DIST: This provides more freedom but less precise manipulation
 
@@ -356,7 +352,13 @@ class Group:
         for v in self.nodes: 
             if locked: v.unlock()
             else: v.lock()
+        for e in self.internal_edges: 
+            if locked: e.unlock()
         return locked 
+
+    def lock_edges(self): 
+        for e in self.internal_edges: 
+            e.lock()
 
     def set_group_labels(self): 
         if self.hover_label_port == None: return 
@@ -486,6 +488,7 @@ class Group:
                         break 
                 # Make sure that the label port is reassigned to the port position of the first vertex in the straigten call
                 edge.other(v).assign_label(label_port)
+                
                 v.assign_both_ends(edge,port,force=False)
                 v.lock()
                 v = edge.other(v)

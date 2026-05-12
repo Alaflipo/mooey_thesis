@@ -32,7 +32,7 @@ port_offset = [ QPointF(-1,0)
 
 font = QFont("Helvetica", 30, QFont.Bold)
 
-def render_network( painter: QPainter, net: Network, show_background: bool, label_dist: int, group: Group ):
+def render_network( painter: QPainter, net: Network, show_background: bool, label_dist: int, group: Group, export: bool ):
 
     # Coordinate system axes
     painter.setPen(QPen(QColor('lightgray'),10))
@@ -66,6 +66,9 @@ def render_network( painter: QPainter, net: Network, show_background: bool, labe
         line_spacing = 4 
         for i in range(len(e.color)):
             ui.edge_pen.setColor(QColor('#' + e.color[i]))
+            # if e.locked: 
+            #     painter.setPen(ui.lock_pen)
+            # else: 
             painter.setPen(ui.edge_pen)
 
             # calculate the offset for each parallel colored line
@@ -130,13 +133,16 @@ def render_network( painter: QPainter, net: Network, show_background: bool, labe
                     left_over = (first_part.length() % e.min_dist)
                     second_part = QLineF(e.bend, e.other(ui.hover_node).pos)
                     draw_indicator_lines(painter, second_part, e.min_dist, start=-1 * left_over)
+            
+            if e.locked: 
+                draw_locked_symbol(painter, ui.hover_node.pos, e.other(ui.hover_node).pos, e.length()/2)
 
     # Draw the nodes
     painter.setPen(ui.node_pen)
     painter.setBrush(ui.node_brush)
     for name, v in net.nodes.items():
         
-        if v.locked: 
+        if v.locked and not export: 
             painter.setPen(ui.lock_pen)
         else: 
             painter.setPen(ui.node_pen)
@@ -516,3 +522,10 @@ def draw_indicator_lines(painter: QPainter, line: QLineF, min_edge_length: float
         indicator_line = QLineF(indicator_point + normal, indicator_point - normal)
         painter.setPen( ui.node_pen )
         painter.drawLine(indicator_line)
+
+def draw_locked_symbol(painter: QPainter, source: QPointF, dest: QPointF, length: float): 
+    direction = QVector2D(dest - source).normalized()
+    lock_pos = source + (direction * length).toPointF()
+    renderer = QSvgRenderer("assets/lock_red.svg")
+    icon_size = 10
+    renderer.render(painter, QRectF(lock_pos.x() - icon_size/2, lock_pos.y() - icon_size/2, icon_size, icon_size))

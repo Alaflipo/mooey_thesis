@@ -15,6 +15,8 @@ diag = 1/sqrt(2) # notational convenience
 bend_short = 0.5
 bend_long = 1
 
+global_min_dist = 100
+
 def layout_lp( net: Network, label_dist:int = 20, stable_node:Node = None ):
 
     if not net.ports_set(): return False
@@ -43,23 +45,23 @@ def layout_lp( net: Network, label_dist:int = 20, stable_node:Node = None ):
                 continue # Unconstrained edge
             else:
                 # Edge is assigned at v1
-                objective += edge_constraint_v2( solver, objective, e.v[1], e.port[1], e.v[0], e.min_dist, e.max_dist )
+                objective += edge_constraint_v2( solver, objective, e.v[1], e.port[1], e.v[0], e.min_dist, e.max_dist, e.locked )
         else:
             if e.port[1] is None:
                 # Edge is assigned at v0
-                objective += edge_constraint_v2( solver, objective, e.v[0], e.port[0], e.v[1], e.min_dist, e.max_dist )
+                objective += edge_constraint_v2( solver, objective, e.v[0], e.port[0], e.v[1], e.min_dist, e.max_dist, e.locked )
             else:
                 # Edge is assigned at both ends; could have a bend
                 if e.port[0]==opposite_port(e.port[1]):
                     # No bend; do arbitrary direction
-                    objective += edge_constraint_v2( solver, objective, e.v[0], e.port[0], e.v[1], e.min_dist, e.max_dist )
+                    objective += edge_constraint_v2( solver, objective, e.v[0], e.port[0], e.v[1], e.min_dist, e.max_dist, e.locked )
                 else:
                     # Bend
                     e.bend = Node(0,0,f"bend-{e.v[0].name}-{e.v[1].name}")
                     e.bend.xvar = solver.NumVar(0,solver.infinity(), v.name+'_x')
                     e.bend.yvar = solver.NumVar(0,solver.infinity(), v.name+'_y')
-                    objective += edge_constraint_v2( solver, objective, e.v[0], e.port[0], e.bend, e.min_dist*bend_length( e, 0 ), e.max_dist )
-                    objective += edge_constraint_v2( solver, objective, e.v[1], e.port[1], e.bend, e.min_dist*bend_length( e, 1 ), e.max_dist )
+                    objective += edge_constraint_v2( solver, objective, e.v[0], e.port[0], e.bend, e.min_dist*bend_length( e, 0 ), e.max_dist, e.locked )
+                    objective += edge_constraint_v2( solver, objective, e.v[1], e.port[1], e.bend, e.min_dist*bend_length( e, 1 ), e.max_dist, e.locked )
 
 
     for v in net.nodes.values(): 
@@ -158,7 +160,7 @@ def edge_constraint( solver, objective, a, port, b, min_dist ):
             solver.Add( b.xvar <= a.xvar - diag*min_dist )
             return 2*diag*a.xvar - 2*diag*b.xvar
         
-def edge_constraint_v2(solver, objective, a, port, b, min_dist=None, max_dist=None):
+def edge_constraint_v2(solver, objective, a, port, b, min_dist=None, max_dist=None, locked = False):
     match port:
         case 0:  # W
             solver.Add(a.yvar == b.yvar)
@@ -192,9 +194,11 @@ def edge_constraint_v2(solver, objective, a, port, b, min_dist=None, max_dist=No
             solver.Add(a.xvar - a.yvar == b.xvar - b.yvar)
             dist = 2 * diag * (a.xvar - b.xvar)
 
-    if min_dist is not None:
+    if min_dist is not None and locked:
         solver.Add(dist >= min_dist)
-    if max_dist is not None:
+    else: 
+        solver.Add(dist >= global_min_dist)
+    if max_dist is not None and locked:
         solver.Add(dist <= max_dist)
 
     return dist

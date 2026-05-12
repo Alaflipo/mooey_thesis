@@ -463,6 +463,8 @@ class Edge:
 
         self.min_dist: int = 100
         self.max_dist: int | None = None 
+
+        self.locked: bool = False
     
     def id(self,v):
         if self.v[0]==v: return 0
@@ -532,6 +534,15 @@ class Edge:
     
     def give_point_offset(self, point, offset): 
         return point + offset * self.normal()
+    
+    def toggle_locked(self): 
+        self.locked = not self.locked
+
+    def lock(self): 
+        self.locked = True
+    
+    def unlock(self): 
+        self.locked = False
 
 def round_angle_to_port(angle):
     return int(((angle+pi/8)%(2*pi))/(pi/4))

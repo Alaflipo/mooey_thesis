@@ -18,7 +18,7 @@ from io_management.fileformat_loom import export_loom, render_loom
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Mooey")
+        self.setWindowTitle("Newey")
         self.setMinimumSize(1280, 720)
 
         central = QWidget()
@@ -78,7 +78,7 @@ class MainWindow(QMainWindow):
     def construct_sidebar(self, layout):
         
         add_group_separator(layout)
-        title = QLabel("MOOEY")
+        title = QLabel("NEWEY")
         title.setStyleSheet("font-weight: bold; color: #d83838; font-size: 47px")
         layout.addWidget(title)
 
