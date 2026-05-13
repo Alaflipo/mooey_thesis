@@ -61,6 +61,8 @@ class Network:
             other_e = Edge(a,b)
             other_e.color = e.color
             other_e.min_dist = e.min_dist
+            other_e.max_dist = e.max_dist
+            other_e.locked = e.locked
             edge_clones[e] = other_e
             a.edges.append( other_e )
             b.edges.append( other_e )

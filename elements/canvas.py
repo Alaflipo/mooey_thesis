@@ -216,8 +216,12 @@ class Canvas(QWidget):
             self.handle_double_click()
 
         ### Experimental for adding extra nodes and edges 
-        # if press and event.buttons() == Qt.LeftButton and event.modifiers() == Qt.ShiftModifier: 
-        #     self.handle_modifier_click()
+        if press and event.buttons() == Qt.LeftButton and event.modifiers() == Qt.ShiftModifier: 
+            # self.handle_modifier_click()
+            if ui.hover_edge and ui.hover_port: 
+                self.remove_edge()
+            elif ui.hover_node: 
+                self.remove_station()
         
         ##### Handle everything when in drag mode #####
         if self.drag: 
@@ -745,6 +749,49 @@ class Canvas(QWidget):
 
         if ui.hover_node: 
             ui.edge_from = ui.hover_node 
+
+    def remove_station(self): 
+        node = ui.hover_node 
+
+        if len(node.edges) == 2: 
+            to_remove = node.edges[0]
+            to_keep = node.edges[1]
+
+            neighbour = to_remove.other(node)
+            port = to_remove.port_at(neighbour)
+            neighbour.ports[port] = to_keep 
+            neighbour.edges.remove(to_remove)
+            neighbour.edges.append(to_keep)
+            self.network.edges.remove(to_remove)
+
+            id = to_keep.id(node)
+            to_keep.v[id] = neighbour
+            to_keep.port[id] = port
+
+        else: 
+            for edge in node.edges: 
+                neighbour = edge.other(node)
+                port = edge.port_at(neighbour)
+                neighbour.ports[port] = None 
+                neighbour.edges.remove(edge)
+                self.network.edges.remove(edge)
+
+        for line in self.network.deg_2_lines: 
+            if node.name in line: 
+                line.remove(node.name)
+                if len(line) == 0: 
+                    self.network.deg_2_lines.remove(line)
+        del self.network.nodes[node.name]
+        ui.hover_node = None
+
+    def remove_edge(self): 
+        edge = ui.hover_edge
+        port = ui.hover_port
+        for node in edge.v: 
+            node.ports[port] = None 
+            node.edges.remove(edge)
+        self.network.edges.remove(edge)
+        
     
     def node_dragging(self):
         """

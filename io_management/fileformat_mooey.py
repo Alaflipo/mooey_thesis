@@ -50,7 +50,9 @@ def write_mooey_file(network: Network) -> str:
             "bend": [edge.bend.x(), edge.bend.y()] if edge.bend != None else "None",
             "color": edge.color,
             "line_id": edge.line_id, 
-            "min_dist": edge.min_dist
+            "min_dist": edge.min_dist,
+            "max_dist": edge.max_dist, 
+            "locked": edge.locked
         }
         edges_json.append(edge_json)
     file['edges'] = edges_json
@@ -126,6 +128,8 @@ def read_mooey_file(file_path: str) -> Network:
         edge.color = edge_json["color"]
         edge.line_id = edge_json["line_id"]
         edge.min_dist = edge_json["min_dist"]
+        edge.max_dist = edge_json["max_dist"] if "max_dist" in edge_json else None 
+        edge.locked = edge_json["locked"] if "locked" in edge_json else True
 
         # add edges and ports to nodes 
         for i, node in enumerate(nodes): 

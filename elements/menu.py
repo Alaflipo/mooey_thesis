@@ -259,7 +259,8 @@ class MainWindow(QMainWindow):
             if slider==0: 
                 for edge in self.canvas.network.edges: 
                     edge.min_dist = value * tick_size
-                self.do_layout()
+                    edge.lock()
+                self.do_layout(global_slide=True)
             if slider==1: 
                 self.canvas.label_dist = value * tick_size
                 self.do_layout()
@@ -322,8 +323,8 @@ class MainWindow(QMainWindow):
         if self.canvas.auto_update.isChecked():
             self.do_layout()
 
-    def do_layout(self):
-        if layout.layout_lp(self.canvas.network, label_dist=self.slider_values[0][1]) is False:
+    def do_layout(self, global_slide: bool = False):
+        if layout.layout_lp(self.canvas.network, label_dist=self.slider_values[0][1], global_slide=global_slide) is False:
             print( "user\t"+"Failed to realize layout.")
             self.canvas.error_message = 'Failed to realise layout with current parameters.'
             # m = QMessageBox()
