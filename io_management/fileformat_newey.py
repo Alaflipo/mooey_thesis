@@ -17,7 +17,7 @@ def get_unique_filename(file_path:str, extension='json'):
 
     return path
 
-def write_mooey_file(network: Network) -> str: 
+def write_newey_file(network: Network) -> str: 
     file = {}
 
     nodes_json = []
@@ -59,14 +59,14 @@ def write_mooey_file(network: Network) -> str:
 
     file['layout_set'] = network.layout_set
     
-    file_path = get_unique_filename(network.file_path, extension='mooey')
+    file_path = get_unique_filename(network.file_path, extension='newey')
 
     with file_path.open("w") as f:
         json.dump(file, f, indent=4)
 
     return file_path.name
 
-def read_mooey_file(file_path: str) -> Network:
+def read_newey_file(file_path: str) -> Network:
     file_path = Path(file_path)
 
     with file_path.open("r") as f:

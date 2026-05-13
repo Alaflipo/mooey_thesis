@@ -496,7 +496,7 @@ def draw_rose( painter, v: Node ):
         if ui.selected_node is not None:
             painter.setPen( ui.active_handle_pen )
         if ui.selected_node==v and ui.selected_edge is not None and ui.selected_edge==v.ports[i]:
-            painter.setBrush(ui.selected_brush)
+            painter.setBrush(ui.rose_used_brush)
         if is_hovered( v, i ):
             painter.setBrush(ui.highlight_brush)
         painter.drawEllipse( handle_position(v,i), ui.handle_radius, ui.handle_radius )

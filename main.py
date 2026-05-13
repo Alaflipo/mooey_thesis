@@ -9,7 +9,7 @@ if  __name__ == "__main__":
     # Minimal imports; show splash screen
     app = QApplication(sys.argv)
     app.styleHints().setColorScheme(Qt.ColorScheme.Dark)
-    pixmap = QPixmap("splash.png")
+    pixmap = QPixmap("assets/newey.png")
     splash = QSplashScreen(pixmap)
     splash.show()
     splash.raise_()

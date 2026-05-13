@@ -6,7 +6,7 @@ from PySide6.QtCore import QPointF, QEvent, QSize, QRectF
 
 from io_management.fileformat_loom import read_network_from_loom, export_loom, render_loom, example_network, add_edge, empty_network
 from io_management.fileformat_graphml import read_network_from_graphml
-from io_management.fileformat_mooey import write_mooey_file, read_mooey_file, get_unique_filename
+from io_management.fileformat_newey import write_newey_file, read_newey_file, get_unique_filename
 
 from helpers.layout import layout_lp
 import helpers.port_assign as pa
@@ -967,8 +967,8 @@ class Canvas(QWidget):
             elif file_name[-5:] == ".json": 
                 self.network, self.filedata = read_network_from_loom(file_name)
                 self.filename = file_name[:-5]
-            elif file_name[-6:] == '.mooey':
-                self.network = read_mooey_file(file_name)
+            elif file_name[-6:] == '.newey':
+                self.network = read_newey_file(file_name)
                 self.filename = file_name[:-6]
             else: 
                 print('File format not supported!')
@@ -1010,7 +1010,7 @@ class Canvas(QWidget):
         img.save(str(get_unique_filename(self.filename, extension='png')))
 
     def save_file(self): 
-        file_path = write_mooey_file(self.network)
+        file_path = write_newey_file(self.network)
         print(f"Saved to {file_path}")
     
     def get_present_state(self) -> tuple: 
