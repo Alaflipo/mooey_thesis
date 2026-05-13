@@ -78,8 +78,9 @@ class MainWindow(QMainWindow):
     def construct_sidebar(self, layout):
         
         add_group_separator(layout)
-        title = QLabel("NEWEY")
-        title.setStyleSheet("font-weight: bold; color: #d83838; font-size: 47px")
+        title = QLabel("Newey")
+        
+        title.setStyleSheet("font-weight: bold; color: #b52b2b; font-size: 54px")
         layout.addWidget(title)
 
         add_group_separator(layout)
