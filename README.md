@@ -1,14 +1,16 @@
 # Newey: An Algorithmically-Assisted Editor for High-Quality Fully Labelled Transit Map Layouts
 
-[-INSERT PICTURES-]
+<p align="center">
+  <img src="newey-examples/berlin.png" alt="Newey teaser" width="48%"/>
+  <img src="newey-examples/wien.png" alt="Newey teaser" width="48%"/>
+  <img src="newey-examples/london.png" alt="Newey teaser" width="100%"/>
+</p>
 
 [-INSERT DEMO VIDEO-]
 
 *Abstract*
 
-Transit maps visualize geospatial graphs such as metro-, tram- and bus-networks, and are canonically schematized using octolinear layouts. Automating the design of schematic transit maps is thoroughly investigated in the literature, but has proven difficult in multiple ways. For one, as a mathematical optimization problem, even fairly simplistic formalizations are \NP-hard to solve. For another, even when mathematically ``optimal'' maps are computationally achievable in practice, their actual quality as effective map designs is often lacking and depends on many factors that are hard or even impossible to accurately formalize (unique landmarks, iconic shapes, stylistic choices, designer preference).
-
-Recently, Van Dijk and Terziadis released a graphical user interface for schematic transit map design that provides the user with a compelling set of algorithmically-assisted interactions based on ``port assignments'' -- solving or sidestepping the issues of computational complexity and formalization by including a human in the loop. As is often the case for automated transit map design systems, the editor focuses solely on the graph layout problem without considering the need to actually label the stations. In this paper we describe a significantly more capable editor that increases usability and practical relevance in two ways. First, we demonstrate that labeling can be seamlessly integrated in the existing port assignment framework, with efficient and meaningful algorithmic assistance. Secondly, we introduce various novel ways of interacting with the port assignment, providing several intuitive user interactions within the framework (for example: dragging nodes, and scaling and pivoting selections).
+Transit maps visualize geospatial graphs such as metro-, tram- and bus-networks, and are canonically schematized using octolinear layouts. Recently, Van Dijk and Terziadis~\cite{11264363} released a graphical user interface for schematic transit map design that provides the user with a compelling set of algorithmically-assisted interactions based on ``port assignments'' -- solving or sidestepping the issues of computational complexity and formalization by including a human in the loop. As is often the case for automated transit map design systems, the editor focuses solely on the graph layout problem without considering the need to actually label the stations. In this paper we describe a significantly more capable editor that increases usability and practical relevance in two ways. First, we demonstrate that labeling can be seamlessly integrated in the existing port assignment framework, with efficient and meaningful algorithmic assistance. Secondly, we introduce various novel ways of interacting with the port assignment, providing several intuitive user interactions within the framework (for example: dragging nodes, and scaling and pivoting selections).
 
 # Installation
 
@@ -28,7 +30,7 @@ python main.py
 
 When starting the application, you are presented with a schematic version of the Vienna metro map. This initial layout has already been generated using both the port-assignment ILP and the layout LP, with default parameters set to, Horizontal label weight: 5% and Consistency weight: 10%. 
 
-From this starting point, the network can be edited interactively in several ways. Or another file can be opened using the top navigation bar. 
+From this starting point, the user can pan and zoom across the canvas to explore the network. Zooming can be performed by scrolling the mouse wheel or by pinching on a touchpad. Panning is possible by pressing and holding the middle mouse button or by using a two-finger gesture on the touchpad. The network can also be edited interactively in several ways. For example, users can drag and drop nodes to reposition them or manipulate an entire degree-2 string at once. Additional options are available in the left-side menu and the group context menus, both of which are explained in the sections below. A different file can be opened through the top navigation bar, which is also described in more detail later.
 
 --------
 
