@@ -146,14 +146,14 @@ Dragging the resize handle inward or outward changes the minimum and maximum edg
 
 ## Save File (`CTRL/CMD + S`)
 
-Saves the current project as a `.mooey` file in the current working directory.
+Saves the current project as a `.newey` file in the current working directory.
 
 ## Load File (`CTRL/CMD + O`)
 
 Loads:
 
 * GeoJSON network files (`.json`),
-* previously saved `.mooey` projects.
+* previously saved `.newey` projects.
 
 ## Take Picture (`CTRL/CMD + P`)
 
