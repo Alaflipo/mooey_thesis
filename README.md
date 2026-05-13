@@ -6,11 +6,16 @@
   <img src="newey-examples/london.png" alt="Newey teaser" width="100%"/>
 </p>
 
+*Figure 1: A labelled octolinear schematic transit map of the Berlin U-bahn, Viena Metro and London Underground created fully within Newey.*
+
+-------
+
+
 [-INSERT DEMO VIDEO-]
 
-*Abstract*
+**Abstract**
 
-Transit maps visualize geospatial graphs such as metro-, tram- and bus-networks, and are canonically schematized using octolinear layouts. Recently, Van Dijk and Terziadis~\cite{11264363} released a graphical user interface for schematic transit map design that provides the user with a compelling set of algorithmically-assisted interactions based on ``port assignments'' -- solving or sidestepping the issues of computational complexity and formalization by including a human in the loop. As is often the case for automated transit map design systems, the editor focuses solely on the graph layout problem without considering the need to actually label the stations. In this paper we describe a significantly more capable editor that increases usability and practical relevance in two ways. First, we demonstrate that labeling can be seamlessly integrated in the existing port assignment framework, with efficient and meaningful algorithmic assistance. Secondly, we introduce various novel ways of interacting with the port assignment, providing several intuitive user interactions within the framework (for example: dragging nodes, and scaling and pivoting selections).
+Transit maps visualize geospatial graphs such as metro-, tram- and bus-networks, and are canonically schematized using octolinear layouts. Recently, Van Dijk and Terziadis released a graphical user interface for schematic transit map design that provides the user with a compelling set of algorithmically-assisted interactions based on *port assignments* -- solving or sidestepping the issues of computational complexity and formalization by including a human in the loop. As is often the case for automated transit map design systems, the editor focuses solely on the graph layout problem without considering the need to actually label the stations. In this paper we describe a significantly more capable editor that increases usability and practical relevance in two ways. First, we demonstrate that labeling can be seamlessly integrated in the existing port assignment framework, with efficient and meaningful algorithmic assistance. Secondly, we introduce various novel ways of interacting with the port assignment, providing several intuitive user interactions within the framework (for example: dragging nodes, and scaling and pivoting selections).
 
 # Installation
 
