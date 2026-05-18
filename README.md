@@ -10,8 +10,7 @@
 
 -------
 
-
-[-INSERT DEMO VIDEO-]
+Watch the demo video [here](https://youtu.be/BFAp0zJtHbo)
 
 **Abstract**
 
