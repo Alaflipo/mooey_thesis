@@ -65,7 +65,7 @@ def render_network( painter: QPainter, net: Network, show_background: bool, labe
         # distance between each line with stroke set at 2
         line_spacing = 4 
         for i in range(len(e.color)):
-            pen_color = QColor('#' + e.color[i])
+            pen_color = QColor('#' + e.color[i] if e.color[i][0] != '#' else e.color[i])
             if focus and group and e not in group.internal_edges: pen_color.setAlphaF(0.35) 
             else: pen_color.setAlphaF(1) 
             ui.edge_pen.setColor(pen_color)
