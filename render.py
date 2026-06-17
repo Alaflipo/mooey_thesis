@@ -32,7 +32,7 @@ port_offset = [ QPointF(-1,0)
 
 font = QFont("Helvetica", 30, QFont.Bold)
 
-def render_network( painter: QPainter, net: Network, show_background: bool, label_dist: int, group: Group, export: bool ):
+def render_network( painter: QPainter, net: Network, show_background: bool, label_dist: int, group: Group, export: bool, focus: bool ):
 
     # Coordinate system axes
     painter.setPen(QPen(QColor('lightgray'),10))
@@ -65,7 +65,10 @@ def render_network( painter: QPainter, net: Network, show_background: bool, labe
         # distance between each line with stroke set at 2
         line_spacing = 4 
         for i in range(len(e.color)):
-            ui.edge_pen.setColor(QColor('#' + e.color[i]))
+            pen_color = QColor('#' + e.color[i])
+            if focus and group and e not in group.internal_edges: pen_color.setAlphaF(0.35) 
+            else: pen_color.setAlphaF(1) 
+            ui.edge_pen.setColor(pen_color)
             # if e.locked: 
             #     painter.setPen(ui.lock_pen)
             # else: 
@@ -141,14 +144,18 @@ def render_network( painter: QPainter, net: Network, show_background: bool, labe
     painter.setPen(ui.node_pen)
     painter.setBrush(ui.node_brush)
     for name, v in net.nodes.items():
-        
-        if v.locked and not export: 
-            painter.setPen(ui.lock_pen)
-        else: 
-            painter.setPen(ui.node_pen)
+
+        pen = ui.lock_pen if v.locked and not export else ui.node_pen
+        color = pen.color()
+        if focus and group and v not in group.nodes: color.setAlphaF(0.35)
+        else: color.setAlphaF(1) 
+        pen.setColor(color)
+        painter.setPen(pen)
         
         painter.setBrush(ui.node_brush)
         painter.drawEllipse(v.pos, 10, 10)
+    
+    for name, v in net.nodes.items():
 
         # We don't render labels if there is no text to be rendered 
         if v.label_node.label_text == "": continue 
@@ -158,6 +165,9 @@ def render_network( painter: QPainter, net: Network, show_background: bool, labe
 
         # We don't render labels if certain buttons in the group are clicked or in use
         if group and v in group.nodes and not group.show_labels and group.hover_label_port == None: continue 
+
+        # We don't render labels if the focus mode is activated and they are not part of the current group 
+        if focus and group and v not in group.nodes: continue 
 
         # Now we can draw the label
         painter.setBrush(QBrush(QColor("lightgray")))

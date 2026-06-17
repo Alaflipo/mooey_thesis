@@ -29,7 +29,7 @@ class Network:
         self.file_path = file_path
         self.nodes: dict[str, Node] = {}
         self.edges: list[Edge] = []
-        self.metro_lines: dict[str, list[Edge]] = []
+        self.metro_lines: dict[str, list[Edge]] = {}
 
         # Midpoint of the network
         self.midpoint: QPointF = QPointF(0,0)
@@ -460,8 +460,8 @@ class Edge:
         self.v: list[Node] = [a,b]
         self.port: list[None | int] = [None,None]
         self.bend: None | QPointF = None
-        self.color: str = '000000'
-        self.line_id: str = ''
+        self.color: str | list[str] = '000000'
+        self.line_id: str | list[str] = ''
 
         self.min_dist: int = 100
         self.max_dist: int | None = None 
@@ -513,6 +513,7 @@ class Edge:
     def vector(self,v):
         return QVector2D(self.v[1-self.id(v)].pos - v.pos)
     def geo_vector(self,v):
+        if QVector2D(self.v[1-self.id(v)].geo_pos - v.geo_pos).length() == 0: print(self.v[0].name, self.v[1].name)
         return QVector2D(self.v[1-self.id(v)].geo_pos - v.geo_pos)
 
     # CCW angles, start at 0 = left

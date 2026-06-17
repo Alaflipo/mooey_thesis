@@ -71,7 +71,7 @@ class MainWindow(QMainWindow):
          # Control variables
         self.label_strength: float = 0.1
 
-        self.do_port_assign()
+        # self.do_port_assign()
         self.history_checkpoint( "Initial drawing" )
         self.update_history_actions()
     
@@ -569,7 +569,7 @@ class GroupListItem(QWidget):
     clicked = Signal(object)
     remove_clicked = Signal(object)
 
-    def __init__(self, text, item_id, color, slider_values: tuple, handle_slider_change, handle_slider_release, parent=None):
+    def __init__(self, text, item_id, color, slider_values: tuple, handle_slider_change, handle_slider_release, handle_button_click, parent=None):
         super().__init__(parent)
         self.item_id = item_id
 
@@ -607,6 +607,10 @@ class GroupListItem(QWidget):
         sliders_layout = QVBoxLayout(self.sliders_container)
         sliders_layout.setContentsMargins(5, 0, 0, 0)
         sliders_layout.setSpacing(2)
+
+        focus_button = QPushButton('Focus')
+        focus_button.clicked.connect(lambda: handle_button_click(item_id))
+        sliders_layout.addWidget(focus_button)
 
         self.slider1 = SliderRow(0, "bend", item_id, 0, 20, slider_values[0], handle_slider_change, handle_slider_release)
         self.slider2 = SliderRow(1, "hor", item_id, 0, 100, slider_values[1], handle_slider_change, handle_slider_release)
@@ -695,7 +699,7 @@ class GroupList(QListWidget):
     def add_entry(self, text, item_id, color=None):
         slider_values = self.canvas.groups[item_id].get_slider_values()
 
-        widget = GroupListItem(text, item_id, color, slider_values, self.handle_slider_change, self.handle_slider_release)
+        widget = GroupListItem(text, item_id, color, slider_values, self.handle_slider_change, self.handle_slider_release, self.handle_focus_click)
         widget.clicked.connect(self.select_item)
         widget.remove_clicked.connect(self.remove_item)
 
@@ -776,6 +780,20 @@ class GroupList(QListWidget):
             widget.deleteLater()
         self.items = {}
         # self.clear_selection()
+    
+    def handle_focus_click(self, item_id): 
+        if not self.canvas.group: 
+            self.current_id = item_id
+            self.items[item_id].set_selected(True)
+            self.canvas.handle_group_select(item_id) 
+
+        self.canvas.focus = True 
+        self.canvas.group.show_labels = True
+        layout.layout_lp(self.canvas.network, focus=self.canvas.group)
+        
+        
+        self.canvas.groups[item_id].update_group()
+        self.canvas.render()
     
     def handle_slider_change(self, item_id, slider_id, value): 
         if not self.canvas.group: 

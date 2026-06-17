@@ -6,6 +6,7 @@ from PySide6.QtCore import QPointF, QEvent, QSize, QRectF
 
 from io_management.fileformat_loom import read_network_from_loom, export_loom, render_loom, example_network, add_edge, empty_network
 from io_management.fileformat_graphml import read_network_from_graphml
+from io_management.ns_format import read_ns_network
 from io_management.fileformat_newey import write_newey_file, read_newey_file, get_unique_filename
 
 from helpers.layout import layout_lp
@@ -54,8 +55,10 @@ class Canvas(QWidget):
         self.drag = False 
 
         # load a network
-        self.filename = 'loom-examples/wien.json'
-        self.network, self.filedata = read_network_from_loom(self.filename)
+        self.filename = 'io_management/NS_stations.geojson'
+        self.network, self.filedata = read_ns_network(self.filename, 'io_management/NS_lines.json')
+        # self.filename = 'loom-examples/wien.json'
+        # self.network, self.filedata = read_network_from_loom(self.filename)
         # self.network = example_network()
         # self.network = empty_network()
         self.network.scale_by_shortest_edge( min_edge_scale )
@@ -63,6 +66,9 @@ class Canvas(QWidget):
         self.network.calculate_mid_point()
         self.network.find_min_max_geo()
         self.network.divide_in_lines()
+
+        for id in self.network.nodes: 
+            print(self.network.nodes[id].label, len(self.network.nodes[id].edges))
        
         self.label_dist:int = 25
 
@@ -87,6 +93,8 @@ class Canvas(QWidget):
         self.color_selected: None | str = None 
 
         self.error_message: None | str = None 
+
+        self.focus: bool = False 
         
     def render(self):
         #self.network.clone()
@@ -102,7 +110,7 @@ class Canvas(QWidget):
         self.pixmap.fill( QColor('white') )
         ui.update_params( view.m11() ) # element [1,1] of the view matrix is scale in our case
         
-        render.render_network(painter, self.network, self.show_background.isChecked(), self.label_dist, self.group, export=export)
+        render.render_network(painter, self.network, self.show_background.isChecked(), self.label_dist, self.group, export=export, focus=self.focus)
         
         if self.group: 
             render.render_group(painter, self.group, self.move_group, self.pivot_group)
@@ -259,7 +267,7 @@ class Canvas(QWidget):
             self.there_was_change = self.network_change 
             if self.auto_update.isChecked():
                 # this is for calculating the new mouse placement after a shift happened while dragging. 
-                resolve_shift = layout_lp(self.network, self.label_dist, ui.hover_node)
+                resolve_shift = layout_lp(self.network, self.label_dist, ui.hover_node, focus=self.group if self.focus else None)
 
                 if self.group: 
                     self.group.update_group()
@@ -551,6 +559,9 @@ class Canvas(QWidget):
             self.pivot_group = None 
             self.drag_group = False 
             self.group = None 
+            if self.focus: 
+                self.network_change = f'toggled focus'
+                self.focus = False
             self.selection_path = QPolygonF()
             self.brush = QPainterPath()
 
