@@ -153,7 +153,10 @@ def render_network( painter: QPainter, net: Network, show_background: bool, labe
         painter.setPen(pen)
         
         painter.setBrush(ui.node_brush)
-        painter.drawEllipse(v.pos, 10, 10)
+        if v.station_type == "knooppuntIntercitystation" or v.station_type == "megastation": 
+            painter.drawEllipse(v.pos, 20, 20)
+        else: 
+            painter.drawEllipse(v.pos, 10, 10)
     
     for name, v in net.nodes.items():
 

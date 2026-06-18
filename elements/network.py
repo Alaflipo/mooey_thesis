@@ -29,7 +29,6 @@ class Network:
         self.file_path = file_path
         self.nodes: dict[str, Node] = {}
         self.edges: list[Edge] = []
-        self.metro_lines: dict[str, list[Edge]] = {}
 
         # Midpoint of the network
         self.midpoint: QPointF = QPointF(0,0)
@@ -174,16 +173,6 @@ class Network:
             new_x = min_x + (v.geo_pos.x() - min_x_geo) * (max_x - min_x) / (max_x_geo - min_x_geo)
             new_y = min_y + (v.geo_pos.y() - min_y_geo) * (max_y - min_y) / (max_y_geo - min_y_geo)
             v.background_pos = QPointF(new_x, new_y)
-            
-    def divide_in_lines(self): 
-        self.lines: dict[str, list[Node]] = {}
-        for edge in self.edges: 
-            for color in edge.color: 
-                if color in self.lines: 
-                    if not edge.v[0] in self.lines[color]: self.lines[color].append(edge.v[0])
-                    if not edge.v[1] in self.lines[color]: self.lines[color].append(edge.v[1])
-                else: 
-                    self.lines[color] = [edge.v[0], edge.v[1]]
     
     def ports_set(self): 
         for edge in self.edges: 
@@ -192,12 +181,13 @@ class Network:
         return True 
 
 class Node:
-    def __init__(self, x, y, name: str, label:str = ""):
+    def __init__(self, x, y, name: str, label:str = "", station_type=""):
         self.pos: QPointF = QPointF(x,y)
         self.geo_pos: QPointF = self.pos
         self.background_pos: QPointF = self.pos
         self.name: str = name
         self.label: str = label
+        self.station_type: str = station_type
 
         # Used for labeling
         self.label_node: Label = Label(self, label) 

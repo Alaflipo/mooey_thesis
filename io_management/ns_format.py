@@ -3,6 +3,7 @@ import math
 from PySide6.QtCore import QPointF
 
 from elements.network import Network, Node, Edge
+from elements.group import Group 
 
 diag = 1/math.sqrt(2)
 
@@ -27,28 +28,32 @@ def read_ns_network(stations, lines):
                 prop = feat['properties']
                 name = prop['id'] 
                 label = prop['name']
+                station_type = prop['type']
                 x, y = geom['coordinates']
-                network.nodes[name] = Node( x, -y, name, label )
+                network.nodes[name] = Node( x, -y, name, label, station_type )
         
     with open(lines) as tl:
         train_lines = json.load(tl)
         edges: dict[str, Edge] = {}
+        groups: dict[str, Group] = {}
         for train in train_lines: 
             line_id = train['lijn']
-            for i, id in enumerate(train['station_ids'][:-1]): 
-                s_id = str(train['station_ids'][i])
-                t_id = str(train['station_ids'][i+1])
-                color = train['color']
+            color = train['color']
+            group_nodes: list[Node] = []
+            
+            # if line_id[0:2] != 'IC': continue
+            for i, id in enumerate(train['passing_ids'][:-1]): 
+                s_id = str(train['passing_ids'][i])
+                t_id = str(train['passing_ids'][i+1])
+                
                 edge_id_1 = f'{s_id}-{t_id}'
                 edge_id_2 = f'{t_id}-{s_id}'
                 if edge_id_1 in edges: 
                     edges[edge_id_1].color.append(color)
                     edges[edge_id_1].line_id.append(line_id)
-                    network.metro_lines[edge_id_1].append(edges[edge_id_1])
                 elif edge_id_2 in edges: 
                     edges[edge_id_2].color.append(color)
                     edges[edge_id_2].line_id.append(line_id)
-                    network.metro_lines[edge_id_2].append(edges[edge_id_2])
                 elif s_id in network.nodes and t_id in network.nodes and not edge_id_2 in edges and not edge_id_1 in edges: 
                     s = network.nodes[s_id]
                     t = network.nodes[t_id]
@@ -58,11 +63,24 @@ def read_ns_network(stations, lines):
                     e.color = [color]
                     e.line_id = [line_id]
                     network.edges.append(e)
-                    edges[edge_id_1] = e 
-                    network.metro_lines[edge_id_1] = [e]
+                    edges[edge_id_1] = e
+
+                # For creating groups
+                if s_id in network.nodes and t_id in network.nodes: 
+                    if network.nodes[s_id] not in group_nodes: group_nodes.append(network.nodes[s_id])
+                    if network.nodes[t_id] not in group_nodes: group_nodes.append(network.nodes[t_id])
+            
+            if len(group_nodes) > 0: 
+                groups[line_id] = Group(nodes=group_nodes, name=line_id, color=color)
+
+    to_delete = []
+    for id, station in network.nodes.items(): 
+        if len(station.edges) == 0: 
+            to_delete.append(id)
+    for item in to_delete: del network.nodes[item]
     create_front_stations(network)
 
-    return network, data
+    return network, data, groups
 
 def create_front_stations(network: Network): 
     front_edges: list[Edge] = []

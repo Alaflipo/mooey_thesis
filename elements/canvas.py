@@ -54,21 +54,26 @@ class Canvas(QWidget):
         self.view = QTransform()
         self.drag = False 
 
+        # Group stuff
+        self.groups: dict[str, Group] = {}
+        self.group: Group | None = None
+
         # load a network
         self.filename = 'io_management/NS_stations.geojson'
-        self.network, self.filedata = read_ns_network(self.filename, 'io_management/NS_lines.json')
+        self.network, self.filedata, self.groups = read_ns_network(self.filename, 'io_management/NS_lines_passing.json')
         # self.filename = 'loom-examples/wien.json'
-        # self.network, self.filedata = read_network_from_loom(self.filename)
+        # self.network, self.filedata, self.groups = read_network_from_loom(self.filename)
         # self.network = example_network()
         # self.network = empty_network()
         self.network.scale_by_shortest_edge( min_edge_scale )
         self.network.find_degree_2_lines()
         self.network.calculate_mid_point()
         self.network.find_min_max_geo()
-        self.network.divide_in_lines()
+        if len(self.groups.values()) <= 0: self.network.divide_in_lines()
 
         for id in self.network.nodes: 
-            print(self.network.nodes[id].label, len(self.network.nodes[id].edges))
+            if len(self.network.nodes[id].edges) == 0: 
+                print(self.network.nodes[id].label, len(self.network.nodes[id].edges))
        
         self.label_dist:int = 25
 
@@ -84,9 +89,6 @@ class Canvas(QWidget):
         self.label_group: bool = False 
         self.shape_group: bool = False 
         self.pivot_group: int | None = None 
-
-        self.groups: dict[str, Group] = {}
-        self.group: Group | None = None
         
         # 0 = square, 1 = lasso, 2 = brush, 3 = line 
         self.selection_mode: int = 1
@@ -179,7 +181,7 @@ class Canvas(QWidget):
             nodes = self.network.lines[color]
 
             # Create a group 
-            self.groups[color] = Group(nodes, name=color, color=f'#{color}')
+            self.groups[color] = Group(nodes, name=color, color=f"#{color}" if color[0] != '#' else color)
 
 
     # Forward every mouse event to the function handle_mouse 

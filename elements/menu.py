@@ -689,12 +689,9 @@ class GroupList(QListWidget):
         self.add_current_metro_lines()
 
     def add_current_metro_lines(self): 
-        # Create the actual groups in the canvas 
-        self.canvas.create_groups_from_lines()
-
         # Add entries to the list 
-        for i, color in enumerate(self.canvas.network.lines): 
-            self.add_entry(f"Metro Line", color, f"#{color}")
+        for group_id, group in self.canvas.groups.items(): 
+            self.add_entry(group_id, group_id, f"#{group.color}" if group.color[0] != '#' else group.color)
 
     def add_entry(self, text, item_id, color=None):
         slider_values = self.canvas.groups[item_id].get_slider_values()

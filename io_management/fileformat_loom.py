@@ -1,6 +1,7 @@
 import json
 
 from elements.network import Network, Node, Edge
+from elements.group import Group
 
 from PySide6.QtCore import QPointF
 
@@ -24,13 +25,13 @@ def read_network_from_loom(filename):
                 prop = feat['properties']
                 s = prop['from']
                 t = prop['to']
-                id = prop['lines'][0]['id']
-                color = [prop['lines'][i]['color'] for i in range(len(prop['lines']))]
+                ids = [prop['lines'][i]['id'] for i in range(len(prop['lines']))]
+                colors = [prop['lines'][i]['color'] for i in range(len(prop['lines']))]
                 # if len(prop['lines'])==1:
                 #     color = prop['lines'][0]['color']
                 # else:
                 #     color = '000000'
-                edge_staging.append( (s,t,color,id) )
+                edge_staging.append( (s,t,colors,ids) )
         
         # first_node = list(network.nodes.values())[0]
         # for i in range(20): 
@@ -39,26 +40,32 @@ def read_network_from_loom(filename):
         #     edge_staging.append((first_node.name, f'test{i}', '000000'))
         #     first_node = network.nodes[f'test{i}']
 
-        metro_lines: dict[str, list[Edge]] = {}
+        metro_lines: dict[str, list[Node]] = {}
+        colors_lines: dict[str, str] = {}
+        groups: dict[str, Group] = {}
 
-        for s,t,color,id in edge_staging:
+        for s,t,colors,ids in edge_staging:
             s = network.nodes[s]
             assert isinstance(s, Node)
             t = network.nodes[t]
             assert isinstance(t, Node)
             e = add_edge(s,t)
-            e.color = color
-            e.line_id = id
+            e.color = colors
+            e.line_id = ids
             network.edges.append( e )
 
-            # Add metro lines 
-            if id in metro_lines: 
-                metro_lines[id].append(e)
-            else: 
-                metro_lines[id] = [e]
+            for i, id in enumerate(ids): 
+                colors_lines[id] = colors[i]
+                if id in metro_lines: 
+                    if s not in metro_lines[id]: metro_lines[id].append(s)
+                    if t not in metro_lines[id]: metro_lines[id].append(t)
+                if id not in metro_lines: 
+                    metro_lines[id] = [s,t]
         
-        network.metro_lines = metro_lines
-    return network, data
+        for line in metro_lines: 
+            groups[line] = Group(metro_lines[line], line, colors_lines[line])
+
+    return network, data, groups 
 
 def example_network(): 
     network = Network()

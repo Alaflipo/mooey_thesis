@@ -75,7 +75,7 @@ def layout_lp( net: Network, label_dist:int = 20, stable_node:Node = None, globa
 
     for v in net.nodes.values(): 
         v.label_node.xvar = solver.NumVar(0, solver.infinity(), v.name+'_label_x')
-        v.label_node.yvar = solver.NumVar(0, solver.infinity(), v.name+'_label_x')
+        v.label_node.yvar = solver.NumVar(0, solver.infinity(), v.name+'_label_y')
         if v.label_node.port != None: 
             objective += edge_constraint( solver, objective, v, v.label_node.port, v.label_node, v.label_node.text_width + label_dist)
 
