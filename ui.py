@@ -1,4 +1,4 @@
-from PySide6.QtGui import QColor, QPen, QBrush 
+from PySide6.QtGui import QColor, QPen, QBrush, Qt
 
 from elements.network import Node, Edge, Label
 
@@ -26,7 +26,9 @@ selected_label_node = None
 
 node_pen = QPen( QColor('black'), 5 )
 lock_pen = QPen( QColor('red'), 5)
-node_brush = QBrush( QColor('white') )
+node_brush = QBrush( QColor('white'), bs=Qt.SolidPattern)
+small_station_brush = QBrush( QColor('black') )
+small_station_pen = QPen( QColor('black'), 1 )
 
 node_pen_background = QPen(QColor(0,0,0,20), 5)
 

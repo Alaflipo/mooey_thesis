@@ -193,8 +193,8 @@ class MainWindow(QMainWindow):
         layout.addWidget(rendering_box)
 
         add_sidebar_button(rendering_box, "Render using Loom", lambda: self.do_render())
-        self.canvas.auto_render = QCheckBox("Auto-render")
-        self.canvas.auto_render.setChecked(False)
+        self.canvas.auto_render = QCheckBox("Render mode")
+        self.canvas.auto_render.setChecked(True)
         rendering_box.addWidget(self.canvas.auto_render)
 
         ### VIEW

@@ -28,7 +28,7 @@ port_offset = [ QPointF(-1,0)
 
 class Group: 
 
-    def __init__(self, nodes: list[Node], name: str = '', color = None, bend=0, hor=0, same_side=0):
+    def __init__(self, nodes: list[Node], name: str = '', color = None, bend=0, hor=0, same_side=0, edges: list[Edge] | None = None):
         self.nodes: list[Node] = nodes 
         self.conn_edges: list[Edge] = []
         self.conn_nodes: list[Node] = []
@@ -42,7 +42,8 @@ class Group:
 
         self.button_size = 20
 
-        self.internal_edges = self.find_all_edges()
+        self.internal_edges = edges if edges and len(edges) > 0 else self.find_all_edges() 
+        if edges and len(edges) > 0: self.find_internal()
         self.find_degree_2_lines()
 
         # Buttons 
@@ -562,6 +563,14 @@ class Group:
             edge = self.internal[node][0] if self.internal[node][0] != edge else self.internal[node][1]
 
         return True 
+    
+    def find_internal(self): 
+        self.internal : dict[Node, list[Edge]] = {}
+        for node in self.nodes: 
+            self.internal[node] = []
+            for edge in node.edges: 
+                if edge in self.internal_edges: 
+                    self.internal[node].append(edge) 
 
     def find_all_edges(self) -> list[Edge]:
         edges: list[Edge] = []

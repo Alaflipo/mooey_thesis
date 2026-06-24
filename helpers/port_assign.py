@@ -31,7 +31,7 @@ def cost_matrix_labels(v: Node, mid_point_x):
             edge_angles.append(e.geo_angle(v))
     # edge_angles = [ e.geo_angle(v) for e in v.edges ]
     port_edge_matrix = np.matrix( [ [ angle_error(pa,ea)**2 for pa in port_angles ] for ea in edge_angles ] )
-    wl = [0.01 * v.label_hor, 0.02 * v.label_hor, 0.03 * v.label_hor]
+    wl = [0.001 * v.label_hor, 0.02 * v.label_hor, 0.03 * v.label_hor]
 
     ### Based on lines add weights for labels 
 

@@ -59,10 +59,12 @@ class Canvas(QWidget):
         self.group: Group | None = None
 
         # load a network
-        self.filename = 'io_management/NS_stations.geojson'
-        self.network, self.filedata, self.groups = read_ns_network(self.filename, 'io_management/NS_lines_passing.json')
+        # self.filename = 'io_management/NS_stations.geojson'
+        # self.network, self.filedata, self.groups = read_ns_network(self.filename, 'io_management/NS_lines_passing.json')
         # self.filename = 'loom-examples/wien.json'
         # self.network, self.filedata, self.groups = read_network_from_loom(self.filename)
+        self.filename = 'newey-examples/ns_rails_with_stops.newey'
+        self.network, self.groups = read_newey_file(self.filename)
         # self.network = example_network()
         # self.network = empty_network()
         self.network.scale_by_shortest_edge( min_edge_scale )
@@ -70,10 +72,6 @@ class Canvas(QWidget):
         self.network.calculate_mid_point()
         self.network.find_min_max_geo()
         if len(self.groups.values()) <= 0: self.network.divide_in_lines()
-
-        for id in self.network.nodes: 
-            if len(self.network.nodes[id].edges) == 0: 
-                print(self.network.nodes[id].label, len(self.network.nodes[id].edges))
        
         self.label_dist:int = 25
 
@@ -112,7 +110,7 @@ class Canvas(QWidget):
         self.pixmap.fill( QColor('white') )
         ui.update_params( view.m11() ) # element [1,1] of the view matrix is scale in our case
         
-        render.render_network(painter, self.network, self.show_background.isChecked(), self.label_dist, self.group, export=export, focus=self.focus)
+        render.render_network(painter, self.network, self.show_background.isChecked(), self.label_dist, self.group, export=export, focus=self.focus, render_mode = self.auto_render.isChecked())
         
         if self.group: 
             render.render_group(painter, self.group, self.move_group, self.pivot_group)
@@ -290,9 +288,9 @@ class Canvas(QWidget):
                     self.error_message = 'Failed to realise layout with current parameters.'
                 else: 
                     self.error_message = None
-                    if self.auto_render.isChecked():
-                        export_loom(self.network,self.filedata)
-                        render_loom( "render.json", "render.svg" )
+                    # if self.auto_render.isChecked():
+                    #     export_loom(self.network,self.filedata)
+                    #     render_loom( "render.json", "render.svg" )
                     if self.show_background.isChecked(): 
                         self.network.set_background_image()
 
@@ -978,10 +976,10 @@ class Canvas(QWidget):
                 self.filedata = None
                 self.filename = file_name[:-8]
             elif file_name[-5:] == ".json": 
-                self.network, self.filedata = read_network_from_loom(file_name)
+                self.network, self.filedata, self.groups = read_network_from_loom(file_name)
                 self.filename = file_name[:-5]
             elif file_name[-6:] == '.newey':
-                self.network = read_newey_file(file_name)
+                self.network, self.groups = read_newey_file(file_name)
                 self.filename = file_name[:-6]
             else: 
                 print('File format not supported!')
@@ -991,7 +989,6 @@ class Canvas(QWidget):
             self.network.find_degree_2_lines()
             self.network.calculate_mid_point()
             self.network.find_min_max_geo()
-            self.network.divide_in_lines()
             self.zoom_to_network()
             self.render()
 

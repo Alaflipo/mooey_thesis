@@ -32,7 +32,7 @@ port_offset = [ QPointF(-1,0)
 
 font = QFont("Helvetica", 30, QFont.Bold)
 
-def render_network( painter: QPainter, net: Network, show_background: bool, label_dist: int, group: Group, export: bool, focus: bool ):
+def render_network( painter: QPainter, net: Network, show_background: bool, label_dist: int, group: Group, export: bool, focus: bool, render_mode: bool = False):
 
     # Coordinate system axes
     painter.setPen(QPen(QColor('lightgray'),10))
@@ -60,68 +60,200 @@ def render_network( painter: QPainter, net: Network, show_background: bool, labe
 
     ### Rendering of connecting lines 
     ### We render bezier curves, when there are multple lines represented as one edge we render each line with a little bit of offset
-    painter.setBrush(Qt.NoBrush )
-    for e in net.edges:
-        # distance between each line with stroke set at 2
-        line_spacing = 4 
-        for i in range(len(e.color)):
-            pen_color = QColor('#' + e.color[i] if e.color[i][0] != '#' else e.color[i])
-            if focus and group and e not in group.internal_edges: pen_color.setAlphaF(0.35) 
-            else: pen_color.setAlphaF(1) 
-            ui.edge_pen.setColor(pen_color)
-            # if e.locked: 
-            #     painter.setPen(ui.lock_pen)
-            # else: 
-            painter.setPen(ui.edge_pen)
+    if not render_mode: 
+        painter.setBrush(Qt.NoBrush )
+        for e in net.edges:
+            # distance between each line with stroke set at 2
+            line_spacing = 6
+            for i in range(len(e.color)):
+                set_pen_color_edge(painter, e, i, focus, group)
 
-            # calculate the offset for each parallel colored line
-            offset_amount = (i - (len(e.color) - 1) / 2) * line_spacing
-            offset = parallel_line_offset(e.v[0].pos, e.v[1].pos, offset_amount)
+                # calculate the offset for each parallel colored line
+                offset_amount = (i - (len(e.color) - 1) / 2) * line_spacing
+                offset = parallel_line_offset(e.v[0].pos, e.v[1].pos, offset_amount)
 
-            # we add the offset to each calculation 
-            a_start = e.v[0].pos + offset
-            if e.free_at(e.v[0]):
-                if e.v[0] == ui.hover_node:
-                    a_1 = free_edge_handle_position(e.v[0], e) + offset
+                # we add the offset to each calculation 
+                a_start = e.v[0].pos + offset
+                if e.free_at(e.v[0]):
+                    if e.v[0] == ui.hover_node:
+                        a_1 = free_edge_handle_position(e.v[0], e) + offset
+                    else:
+                        a_1 = e.v[0].pos + (ui.bezier_radius * e.direction(e.v[0])).toPointF() + offset
+                    a_2 = e.v[0].pos + (ui.bezier_cp * e.direction(e.v[0])).toPointF() + offset
                 else:
-                    a_1 = e.v[0].pos + (ui.bezier_radius * e.direction(e.v[0])).toPointF() + offset
-                a_2 = e.v[0].pos + (ui.bezier_cp * e.direction(e.v[0])).toPointF() + offset
-            else:
+                    a_1 = e.v[0].pos + ui.bezier_radius * port_offset[e.port[0]] + offset
+                    a_2 = e.v[0].pos + ui.bezier_cp * port_offset[e.port[0]] + offset
+
+                b_start = e.v[1].pos + offset
+                if e.free_at(e.v[1]):
+                    if e.v[1] == ui.hover_node:
+                        b_1 = free_edge_handle_position(e.v[1], e) + offset
+                    else:
+                        b_1 = e.v[1].pos + (ui.bezier_radius * e.direction(e.v[1])).toPointF() + offset
+                    b_2 = e.v[1].pos + (ui.bezier_cp * e.direction(e.v[1])).toPointF() + offset
+                else:
+                    b_1 = e.v[1].pos + ui.bezier_radius * port_offset[e.port[1]] + offset
+                    b_2 = e.v[1].pos + ui.bezier_cp * port_offset[e.port[1]] + offset
+
+                bend = None if e.bend is None else e.bend + offset
+
+                path = QPainterPath()
+
+                if e.free_at(e.v[0]):
+                    path.moveTo(a_1)
+                else:
+                    path.moveTo(a_start)
+                    path.lineTo(a_1)
+
+                if bend is None:
+                    path.cubicTo(a_2, b_2, b_1)
+                else:
+                    path.lineTo(bend)
+                    path.lineTo(b_1)
+
+                if not e.free_at(e.v[1]):
+                    path.lineTo(b_start)
+
+                painter.drawPath(path)
+    
+
+    if render_mode: 
+
+        line_spacing = 6
+
+        painter.setBrush(Qt.NoBrush )
+        for e in net.edges:
+            # distance between each line with stroke set at 2
+            
+            for i in range(len(e.color)):
+                # pen_color = QColor('#' + e.color[i] if e.color[i][0] != '#' else e.color[i])
+                # if focus and group and (e not in group.internal_edges or e.line_id[i] != group.name): pen_color.setAlphaF(0.35) 
+                # else: pen_color.setAlphaF(1) 
+                # ui.edge_pen.setColor(pen_color)
+                # if focus and group and e in group.internal_edges and e.line_id[i] == group.name: 
+                #     ui.edge_pen.setWidth(10)
+                # painter.setPen(ui.edge_pen)
+
+                set_pen_color_edge(painter, e, i, focus, group)
+
+                # calculate the offset for each parallel colored line
+                offset_amount = (i - (len(e.color) - 1) / 2) * line_spacing
+                offset = parallel_line_offset(e.v[0].pos, e.v[1].pos, offset_amount)
+
                 a_1 = e.v[0].pos + ui.bezier_radius * port_offset[e.port[0]] + offset
                 a_2 = e.v[0].pos + ui.bezier_cp * port_offset[e.port[0]] + offset
 
-            b_start = e.v[1].pos + offset
-            if e.free_at(e.v[1]):
-                if e.v[1] == ui.hover_node:
-                    b_1 = free_edge_handle_position(e.v[1], e) + offset
-                else:
-                    b_1 = e.v[1].pos + (ui.bezier_radius * e.direction(e.v[1])).toPointF() + offset
-                b_2 = e.v[1].pos + (ui.bezier_cp * e.direction(e.v[1])).toPointF() + offset
-            else:
+                b_start = e.v[1].pos + offset
                 b_1 = e.v[1].pos + ui.bezier_radius * port_offset[e.port[1]] + offset
                 b_2 = e.v[1].pos + ui.bezier_cp * port_offset[e.port[1]] + offset
 
-            bend = None if e.bend is None else e.bend + offset
+                bend = None if e.bend is None else e.bend + offset
 
-            path = QPainterPath()
+                path = QPainterPath()
 
-            if e.free_at(e.v[0]):
                 path.moveTo(a_1)
-            else:
-                path.moveTo(a_start)
-                path.lineTo(a_1)
-
-            if bend is None:
-                path.cubicTo(a_2, b_2, b_1)
-            else:
-                path.lineTo(bend)
+                if bend: 
+                    path.lineTo(bend)
                 path.lineTo(b_1)
+                painter.drawPath(path)
+        
+        for v in net.nodes.values(): 
+            lines: dict[str, list[tuple[Edge, int]]] = {}
+            for e in v.edges: 
+                for i, id in enumerate(e.line_id): 
+                    if id in lines: 
+                        # because we have duplicate id numbers (should fix this) we have holes in the line! 
+                        if len(lines[id]) < 2: 
+                            lines[id].append((e, i))
+                    else: 
+                        lines[id] = [(e, i)]
+            
+            for id in lines: 
+                set_pen_color_edge(painter, lines[id][0][0], lines[id][0][1], focus, group)
+                # end station 
+                if len(lines[id]) == 1: 
 
-            if not e.free_at(e.v[1]):
-                path.lineTo(b_start)
+                    # edge 
+                    edge = lines[id][0][0] 
+                    index = lines[id][0][1] 
+                    color = edge.color[index]
+                    offset_amount = (index - (len(edge.line_id) - 1) / 2) * line_spacing
+                    offset = parallel_line_offset(edge.v[0].pos, edge.v[1].pos, offset_amount)
+                    point = v.pos + ui.bezier_radius * port_offset[edge.port_at(v)] + offset
+                    middle = v.pos + offset
+                    path = QPainterPath()
+                    path.moveTo(point)
+                    path.lineTo(middle)
+                    painter.drawPath(path)
 
-            painter.drawPath(path)
+                    # station 
+                    if id in v.stops: 
+                        painter.setBrush(ui.node_brush)
+                        painter.setPen(ui.small_station_pen)
+                        painter.drawEllipse(middle, 3, 3)
 
+                # single pass trough 
+                elif len(lines[id]) == 2: 
+                    points = []
+                    middles = []
+                    for edge, index in lines[id]:
+                        offset_amount = (index - (len(edge.line_id) - 1) / 2) * line_spacing
+                        offset = parallel_line_offset(edge.v[0].pos, edge.v[1].pos, offset_amount)
+                        points.append(v.pos + ui.bezier_radius * port_offset[edge.port_at(v)] + offset)
+                        middles.append(v.pos + offset)
+                    path = QPainterPath()
+                    painter.setBrush(Qt.NoBrush)
+                    path.moveTo(points[0])
+                    path.cubicTo(middles[0], middles[1], points[1])
+                    painter.drawPath(path)
+
+                    # station 
+                    if id in v.stops: 
+                        painter.setBrush(ui.node_brush)
+                        painter.setPen(ui.small_station_pen)
+                        painter.drawEllipse((middles[0] + middles[1]) / 2, 3, 3)
+                #split, don't know what to do
+                else: 
+                    print('more') 
+        
+        # for e in net.edges:
+        #     # distance between each line with stroke set at 2
+        #     line_spacing = 6
+        #     for i in range(len(e.color)): 
+        #         offset_amount = (i - (len(e.color) - 1) / 2) * line_spacing
+        #         offset = parallel_line_offset(e.v[0].pos, e.v[1].pos, offset_amount)
+        #         a_start = e.v[0].pos + offset
+        #         b_start = e.v[1].pos + offset
+        #         for (v, pos) in [(e.v[0], a_start), (e.v[1], b_start)]: 
+        #             painter.setBrush(ui.node_brush)
+                    
+        #             if e.line_id[i] in v.stops: 
+        #                 pen = ui.small_station_pen
+        #                 color = pen.color()
+        #                 if focus and group and v not in group.nodes: color.setAlphaF(0.35)
+        #                 else: color.setAlphaF(1) 
+        #                 pen.setColor(color)
+        #                 painter.setPen(pen)
+        #                 painter.drawEllipse(pos, 3, 3)
+        
+        for v in net.nodes.values(): 
+            passer_trough = False 
+            for e in v.edges: 
+                for id in e.line_id: 
+                    if id not in v.stops: 
+                        passer_trough = True 
+            if not passer_trough: 
+                pen = ui.lock_pen if v.locked and not export else ui.node_pen
+                color = pen.color()
+                if focus and group and v not in group.nodes: color.setAlphaF(0.35)
+                else: color.setAlphaF(1) 
+                pen.setColor(color)
+                painter.setPen(pen)
+                painter.setBrush(ui.node_brush)
+                if v.station_type == "knooppuntIntercitystation" or v.station_type == "megastation": 
+                    painter.drawEllipse(v.pos, 20, 20)
+                else: 
+                    painter.drawEllipse(v.pos, 10, 10)
 
     # For indicator lines of minimal edge length (should be done earlier because that looks prettier)
     if ui.hover_node and net.layout_set: 
@@ -153,10 +285,10 @@ def render_network( painter: QPainter, net: Network, show_background: bool, labe
         painter.setPen(pen)
         
         painter.setBrush(ui.node_brush)
-        if v.station_type == "knooppuntIntercitystation" or v.station_type == "megastation": 
-            painter.drawEllipse(v.pos, 20, 20)
-        else: 
+        if not render_mode: 
             painter.drawEllipse(v.pos, 10, 10)
+        # elif v.station_type == "knooppuntIntercitystation" or v.station_type == "megastation": 
+        #     painter.drawEllipse(v.pos, 20, 20)
     
     for name, v in net.nodes.items():
 
@@ -167,10 +299,13 @@ def render_network( painter: QPainter, net: Network, show_background: bool, labe
         if ui.drag_node and not ui.hover_node and not ui.drag_label: continue 
 
         # We don't render labels if certain buttons in the group are clicked or in use
-        if group and v in group.nodes and not group.show_labels and group.hover_label_port == None: continue 
+        if group and v in group.nodes and not group.show_labels and group.hover_label_port == None and group.name not in v.stops: continue 
 
         # We don't render labels if the focus mode is activated and they are not part of the current group 
         if focus and group and v not in group.nodes: continue 
+
+        # If we don't stop in focus mode at the station we don't render the label 
+        if focus and group and group.name not in v.stops: continue 
 
         # Now we can draw the label
         painter.setBrush(QBrush(QColor("lightgray")))
@@ -188,6 +323,18 @@ def render_network( painter: QPainter, net: Network, show_background: bool, labe
                 if e==ui.hover_edge: painter.setBrush( ui.highlight_brush )
                 handle_pos = free_edge_handle_position(ui.hover_node, e)
                 painter.drawEllipse(handle_pos,ui.handle_radius,ui.handle_radius)
+
+def set_pen_color_edge(painter: QPainter, edge: Edge, color_index: int, focus: bool = False, group: Group = None): 
+    color = edge.color[color_index]
+    pen_color = QColor('#' + color if color[0] != '#' else color)
+    if focus and group and (edge not in group.internal_edges or edge.line_id[color_index] != group.name): 
+        pen_color.setAlphaF(0.35) 
+        ui.edge_pen.setWidth(2)
+    else: pen_color.setAlphaF(1) 
+    ui.edge_pen.setColor(pen_color)
+    if focus and group and edge in group.internal_edges and edge.line_id[color_index] == group.name: 
+        ui.edge_pen.setWidth(10)
+    painter.setPen(ui.edge_pen)
 
 def parallel_line_offset(p1: QPointF, p2: QPointF, amount: float) -> QPointF:
     line = QLineF(p1, p2)

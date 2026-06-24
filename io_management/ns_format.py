@@ -72,7 +72,11 @@ def read_ns_network(stations, lines):
             
             if len(group_nodes) > 0: 
                 groups[line_id] = Group(nodes=group_nodes, name=line_id, color=color)
-
+            
+            for i, id in enumerate(train['station_ids']):  
+                if id in network.nodes: 
+                    network.nodes[id].stops.append(line_id)
+                    
     to_delete = []
     for id, station in network.nodes.items(): 
         if len(station.edges) == 0: 

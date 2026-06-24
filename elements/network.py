@@ -59,6 +59,7 @@ class Network:
             b = other.nodes[ e.v[1].name ]
             other_e = Edge(a,b)
             other_e.color = e.color
+            other_e.line_id = e.line_id
             other_e.min_dist = e.min_dist
             other_e.max_dist = e.max_dist
             other_e.locked = e.locked
@@ -203,6 +204,8 @@ class Node:
         self.label_hor: float = 10
         self.label_same_side: float = 10
 
+        self.stops = []
+
     # Still need to add label_node and edges (edges and ports) on your own 
     def clone(self, x, y, name, label) -> Node:
         other = Node(x, y, name, label)
@@ -210,6 +213,8 @@ class Node:
         other.pos = self.pos 
         other.left_line = self.left_line
         other.locked = self.locked
+        other.station_type = self.station_type
+        other.stops = self.stops
         return other 
     
     def update_pos(self, pos: QPointF, geo_pos: QPointF): 
@@ -503,7 +508,6 @@ class Edge:
     def vector(self,v):
         return QVector2D(self.v[1-self.id(v)].pos - v.pos)
     def geo_vector(self,v):
-        if QVector2D(self.v[1-self.id(v)].geo_pos - v.geo_pos).length() == 0: print(self.v[0].name, self.v[1].name)
         return QVector2D(self.v[1-self.id(v)].geo_pos - v.geo_pos)
 
     # CCW angles, start at 0 = left
