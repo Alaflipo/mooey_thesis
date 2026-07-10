@@ -124,7 +124,6 @@ def render_network( painter: QPainter, net: Network, show_background: bool, labe
         painter.setBrush(Qt.NoBrush )
         for e in net.edges:
             # distance between each line with stroke set at 2
-            
             for i in range(len(e.color)):
                 # pen_color = QColor('#' + e.color[i] if e.color[i][0] != '#' else e.color[i])
                 # if focus and group and (e not in group.internal_edges or e.line_id[i] != group.name): pen_color.setAlphaF(0.35) 
@@ -305,7 +304,7 @@ def render_network( painter: QPainter, net: Network, show_background: bool, labe
         if focus and group and v not in group.nodes: continue 
 
         # If we don't stop in focus mode at the station we don't render the label 
-        if focus and group and group.name not in v.stops: continue 
+        # if focus and group and group.name not in v.stops: continue 
 
         # Now we can draw the label
         painter.setBrush(QBrush(QColor("lightgray")))
